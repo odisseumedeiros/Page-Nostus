@@ -1,49 +1,79 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Finanças Pessoais</title>
+  <title>Finanças Pessoais — FlowBoard</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#059669">
+  <meta name="theme-color" content="#f97316">
   <link rel="icon" href="icon.svg">
   <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Tailwind (Play CDN) e Chart.js -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config = { darkMode: 'class' }</script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'] },
+          colors: {
+            board: {
+              bg: '#09090b',
+              card: '#121215',
+              cardHover: '#18181c',
+              border: '#27272a',
+              accent: '#f97316',
+              accentHover: '#ea580c'
+            }
+          }
+        }
+      }
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style type="text/tailwindcss">
     @layer components {
-      .inp  { @apply w-full mt-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm; }
-      .btn  { @apply px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-sm font-medium; }
-      .btn-p{ @apply bg-emerald-600 text-white border-emerald-600; }
-      .card { @apply bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700; }
-      .nav  { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm; }
+      .inp  { @apply w-full mt-1 px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#09090b] text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-orange-500 transition-colors; }
+      .btn  { @apply px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#18181b] hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm font-medium transition-colors cursor-pointer; }
+      .btn-p{ @apply bg-orange-500 hover:bg-orange-600 text-white border-orange-500 shadow-lg shadow-orange-500/20; }
+      .card { @apply bg-white dark:bg-[#121215] rounded-2xl p-5 border border-zinc-200 dark:border-[#27272a] shadow-sm; }
+      .nav  { @apply flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-all cursor-pointer; }
     }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; }
   </style>
 </head>
-<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 antialiased">
+<body class="bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 antialiased selection:bg-orange-500 selection:text-white">
   <div class="min-h-screen">
     <!-- Barra lateral (desktop) -->
-    <aside id="side" class="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col gap-1 p-4 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"></aside>
+    <aside id="side" class="hidden md:flex fixed inset-y-0 left-0 w-64 flex-col p-4 border-r border-zinc-200 dark:border-[#27272a] bg-white dark:bg-[#0d0d10] z-30"></aside>
 
-    <div class="md:ml-60 pb-24 md:pb-8">
-      <header class="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-700 px-4 py-2 flex flex-wrap items-center gap-2" style="padding-top:max(.5rem,env(safe-area-inset-top))">
-        <h1 id="title" class="font-semibold text-lg mr-auto"></h1>
-        <input type="month" id="month" class="inp !w-auto !mt-0" aria-label="Filtro de mês">
-        <div id="sync" class="flex items-center gap-1.5 text-xs" aria-live="polite"></div>
-        <button id="syncBtn" class="btn !py-1 text-xs"></button>
-        <button data-a="theme" class="btn !py-1" aria-label="Alternar tema">🌓</button>
+    <div class="md:ml-64 pb-24 md:pb-10">
+      <header class="sticky top-0 z-20 bg-zinc-50/90 dark:bg-[#09090b]/90 backdrop-blur-md border-b border-zinc-200 dark:border-[#27272a] px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-3" style="padding-top:max(.75rem,env(safe-area-inset-top))">
+        <div>
+          <h1 id="title" class="font-bold text-xl tracking-tight"></h1>
+          <p id="subtitle" class="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:block">Acompanhe sua saúde financeira em tempo real.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <div id="sync" class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-xl bg-zinc-100 dark:bg-[#121215] border border-zinc-200 dark:border-[#27272a]" aria-live="polite"></div>
+          <input type="month" id="month" class="inp !w-auto !mt-0 !py-1.5 !bg-white dark:!bg-[#121215]" aria-label="Filtro de mês">
+          <button id="syncBtn" class="btn !py-1.5 text-xs"></button>
+          <button data-a="theme" class="btn !py-1.5 !px-2.5" aria-label="Alternar tema" title="Alternar tema">🌓</button>
+        </div>
       </header>
-      <main id="view" class="p-4 max-w-5xl mx-auto"></main>
+      <main id="view" class="p-4 md:p-6 max-w-7xl mx-auto"></main>
     </div>
   </div>
 
   <!-- Navegação inferior (mobile) -->
-  <nav id="bottom" class="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+  <nav id="bottom" class="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-white dark:bg-[#0d0d10] border-t border-zinc-200 dark:border-[#27272a]" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
 
-  <button id="fab" data-a="new-tx" aria-label="Nova transação" class="fixed right-4 bottom-20 md:bottom-6 w-14 h-14 rounded-full bg-emerald-600 text-white text-3xl shadow-lg z-30">+</button>
-  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end md:items-center justify-center md:p-4"></div>
+  <button id="fab" data-a="new-tx" aria-label="Nova transação" class="fixed right-5 bottom-20 md:bottom-7 w-14 h-14 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white text-3xl shadow-xl shadow-orange-500/30 z-30 transition-transform active:scale-95 flex items-center justify-center">+</button>
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4"></div>
   <input type="file" id="imp" accept=".json,application/json" hidden>
 
   <script type="module" src="app.js"></script>
