@@ -3,7 +3,7 @@
   "short_name": "Finanças",
   "description": "Controle financeiro pessoal offline-first com sincronização no Google Drive",
   "lang": "pt-BR",
-  "start_url": "./",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
