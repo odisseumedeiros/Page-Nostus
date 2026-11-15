@@ -1,6 +1,6 @@
 // sw.js — Cache-First para assets estáticos (locais + CDN). Chamadas à API do GitHub nunca são interceptadas.
 // Ao alterar qualquer arquivo do app, incremente VERSION para forçar a atualização do cache.
-const VERSION = 'fp-v4';
+const VERSION = 'fp-v5';
 const LOCAL = ['./', 'index.html', 'app.js', 'db.js', 'github-sync.js', 'manifest.json', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const CDN = [
   'https://cdn.tailwindcss.com',
