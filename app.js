@@ -676,8 +676,7 @@ function csv() {
   inMonth(S.month).sort((a, b) => a.date.localeCompare(b.date)).forEach(t => rows.push([
     fdate(t.date), T[t.type], t.description, t.type === 'transfer' ? '' : cat(t.categoryId).name, accName(t.accountId),
     t.toAccountId ? accName(t.toAccountId) : '', t.amount.toFixed(2).replace('.', ','), t.status === 'paid' ? 'Pago' : 'Pendente']));
-  download(`financas_${S.month}.csv`, '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('
-'), 'text/csv');
+  download(`financas_${S.month}.csv`, '\ufeff' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n'), 'text/csv');
 }
 
 /* ================= Eventos ================= */
