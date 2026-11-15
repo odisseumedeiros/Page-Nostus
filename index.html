@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Finanças Pessoais</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#059669">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <!-- Tailwind (Play CDN) e Chart.js -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style type="text/tailwindcss">
+    @layer components {
+      .inp  { @apply w-full mt-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm; }
+      .btn  { @apply px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-sm font-medium; }
+      .btn-p{ @apply bg-emerald-600 text-white border-emerald-600; }
+      .card { @apply bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700; }
+      .nav  { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 antialiased">
+  <div class="min-h-screen">
+    <!-- Barra lateral (desktop) -->
+    <aside id="side" class="hidden md:flex fixed inset-y-0 left-0 w-60 flex-col gap-1 p-4 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"></aside>
+
+    <div class="md:ml-60 pb-24 md:pb-8">
+      <header class="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-700 px-4 py-2 flex flex-wrap items-center gap-2" style="padding-top:max(.5rem,env(safe-area-inset-top))">
+        <h1 id="title" class="font-semibold text-lg mr-auto"></h1>
+        <input type="month" id="month" class="inp !w-auto !mt-0" aria-label="Filtro de mês">
+        <div id="sync" class="flex items-center gap-1.5 text-xs" aria-live="polite"></div>
+        <button id="syncBtn" class="btn !py-1 text-xs"></button>
+        <button data-a="theme" class="btn !py-1" aria-label="Alternar tema">🌓</button>
+      </header>
+      <main id="view" class="p-4 max-w-5xl mx-auto"></main>
+    </div>
+  </div>
+
+  <!-- Navegação inferior (mobile) -->
+  <nav id="bottom" class="md:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+
+  <button id="fab" data-a="new-tx" aria-label="Nova transação" class="fixed right-4 bottom-20 md:bottom-6 w-14 h-14 rounded-full bg-emerald-600 text-white text-3xl shadow-lg z-30">+</button>
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end md:items-center justify-center md:p-4"></div>
+  <input type="file" id="imp" accept=".json,application/json" hidden>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
