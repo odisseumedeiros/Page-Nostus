@@ -2,7 +2,7 @@
 // Toda leitura/escrita da UI passa por aqui. Cada registro tem `lastModified`;
 // exclusões são "soft delete" (deleted:true) para que a exclusão também sincronize.
 const NAME = 'financas_pessoais';
-const DATA = ['transactions', 'accounts', 'categories', 'cards', 'holdings', 'goals']; // stores de dados (vão para o Drive)
+const DATA = ['transactions', 'accounts', 'categories', 'cards', 'holdings', 'goals', 'assets', 'debts', 'snaps']; // stores de dados (vão para o Drive)
 let db;
 
 const p = r => new Promise((ok, err) => { r.onsuccess = () => ok(r.result); r.onerror = () => err(r.error); });
@@ -12,7 +12,7 @@ const emit = () => document.dispatchEvent(new Event('db:change'));
 export const DB = {
   open() {
     return new Promise((ok, err) => {
-      const r = indexedDB.open(NAME, 2);
+      const r = indexedDB.open(NAME, 3);
       r.onupgradeneeded = () => {
         [...DATA, 'syncQueue'].forEach(s => { if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: 'id' }); });
       };
