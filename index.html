@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Finanças Pessoais</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#059669">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <!-- Tailwind (Play CDN) e Chart.js -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style type="text/tailwindcss">
+    @layer components {
+      .inp  { @apply w-full mt-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-neutral-700 bg-white dark:bg-[#0a0a0a] text-sm; }
+      .btn  { @apply px-3 py-2 rounded-lg border border-slate-300 dark:border-neutral-700 text-sm font-medium; }
+      .btn-p{ @apply bg-orange-500 text-white border-orange-500; }
+      .card { @apply bg-white dark:bg-[#141414] rounded-xl p-4 shadow-sm border border-slate-200 dark:border-neutral-800; }
+      .nav  { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm; }
+    }
+  </style>
+  <style>
+    /* Retrato: barra inferior + grade de 2 colunas. Tablet, desktop e CELULAR NA HORIZONTAL: barra lateral + grade de 12 colunas. */
+    #side{display:none;width:4rem;padding:.5rem;overflow-y:auto}
+    #side .nav{justify-content:center} #side .lbl{display:none}
+    .main-wrap{padding-bottom:6rem}
+    .dash{display:grid;gap:.75rem;grid-template-columns:1fr 1fr} .dash>*{min-width:0} .dash>.w{grid-column:1/-1}
+    @media (min-width:768px),(orientation:landscape) and (min-width:560px){
+      #side{display:flex} #bottom{display:none} .main-wrap{margin-left:4rem;padding-bottom:2rem}
+      .dash{grid-template-columns:repeat(12,1fr);gap:1rem}
+      .dash>.k{grid-column:span 3} .dash>.w7{grid-column:span 7} .dash>.w5{grid-column:span 5} .dash>.w4{grid-column:span 4}
+    }
+    @media (min-width:1100px){#side{width:15rem;padding:1rem}#side .lbl{display:inline}#side .nav{justify-content:flex-start}.main-wrap{margin-left:15rem}}
+  </style>
+</head>
+<body class="bg-slate-50 dark:bg-[#0a0a0a] text-slate-800 dark:text-slate-100 antialiased">
+  <div class="min-h-screen">
+    <!-- Barra lateral (desktop) -->
+    <aside id="side" class="flex fixed inset-y-0 left-0 flex-col gap-1 border-r border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#141414]"></aside>
+
+    <div class="main-wrap">
+      <header class="sticky top-0 z-20 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur border-b border-slate-200 dark:border-neutral-800 px-4 py-2 flex flex-wrap items-center gap-2" style="padding-top:max(.5rem,env(safe-area-inset-top))">
+        <h1 id="title" class="font-semibold text-lg mr-auto"></h1>
+        <input type="month" id="month" class="inp !w-auto !mt-0" aria-label="Filtro de mês">
+        <div id="sync" class="flex items-center gap-1.5 text-xs" aria-live="polite"></div>
+        <button id="syncBtn" class="btn !py-1 text-xs"></button>
+        <button data-a="theme" class="btn !py-1" aria-label="Alternar tema">🌓</button>
+      </header>
+      <main id="view" class="p-4 max-w-5xl mx-auto"></main>
+    </div>
+  </div>
+
+  <!-- Navegação inferior (mobile) -->
+  <nav id="bottom" class="fixed bottom-0 inset-x-0 z-30 flex overflow-x-auto bg-white dark:bg-[#141414] border-t border-slate-200 dark:border-neutral-800" style="padding-bottom:env(safe-area-inset-bottom)"></nav>
+
+  <button id="fab" data-a="new-tx" aria-label="Nova transação" class="fixed right-4 bottom-20 md:bottom-6 w-14 h-14 rounded-full bg-orange-500 text-white text-3xl shadow-lg z-30">+</button>
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end md:items-center justify-center md:p-4"></div>
+  <input type="file" id="imp" accept=".json,application/json" hidden>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
