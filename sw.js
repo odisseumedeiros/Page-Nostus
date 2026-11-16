@@ -1,7 +1,8 @@
 // sw.js — Cache-First para assets estáticos (locais + CDN). Chamadas à API do GitHub nunca são interceptadas.
 // Ao alterar qualquer arquivo do app, incremente VERSION para forçar a atualização do cache.
-const VERSION = 'fp-v4';
-const LOCAL = ['./', 'index.html', 'app.js', 'db.js', 'github-sync.js', 'manifest.json', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const VERSION = 'fp-v6';
+const LOCAL = ['./', 'index.html', 'app.js', 'db.js', 'github-sync.js', 'manifest.json'];
+const OPT = ['ic-financas-180.png', 'ic-financas-192.png', 'ic-financas-512.png', 'ic-nostos-180.png', 'ic-nostos-192.png', 'ic-nostos-512.png']; // ícones: não bloqueiam a instalação se faltar algum
 const CDN = [
   'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'
@@ -10,6 +11,7 @@ const CDN = [
 self.addEventListener('install', e => e.waitUntil((async () => {
   const c = await caches.open(VERSION);
   await c.addAll(LOCAL);
+  await Promise.allSettled(OPT.map(u => c.add(u)));
   await Promise.allSettled(CDN.map(u => c.add(new Request(u, { mode: 'no-cors' }))));
   self.skipWaiting();
 })()));
