@@ -126,7 +126,8 @@ function buildNav() {
   $('#burger').innerHTML = ic('menu'); $('#sbtn').innerHTML = '<span class="sl">Pesquisar</span>' + ic('search');
   $('#side').innerHTML = `<div class="flex items-center gap-2 px-2 py-3 font-bold text-violet-400"><img src="ic-${appIcon()}-192.png" class="app-logo w-8 h-8 rounded-lg" alt=""><span class="lbl">Finanças</span></div>` +
     NAV.map(([v, i, l, g]) => { const h = g !== sec ? (sec = g, `<p class="lbl text-[10px] tracking-widest text-neutral-500 px-3 pt-3">${g}</p>`) : ''; return h + `<button data-a="nav" data-id="${v}" title="${l}" class="nav text-left">${ic(i, 'w-5 h-5')}<span class="lbl">${l}</span></button>`; }).join('');
-  $('#bottom').innerHTML = bnav().map(v => { const n = NAV.find(x => x[0] === v); return `<button data-a="nav" data-id="${v}" class="nav !flex-col !gap-1 !px-1 !py-2 text-[10px] rounded-none flex-1">${ic(n[1], 'w-6 h-6')}${n[2]}</button>`; }).join('');
+  const bn = bnav(), half = Math.ceil(bn.length / 2), bb = v => { const n = NAV.find(x => x[0] === v); return `<button data-a="nav" data-id="${v}" class="nav !flex-col !gap-1 !px-1 !py-2 text-[10px] rounded-none flex-1">${ic(n[1], 'w-6 h-6')}${n[2]}</button>`; };
+  $('#bottom').innerHTML = bn.slice(0, half).map(bb).join('') + `<button data-a="new-tx" class="nav-add" aria-label="Novo lançamento">${ic('plus', 'w-6 h-6')}</button>` + bn.slice(half).map(bb).join('');
 }
 function render() {
   S.charts.forEach(c => c.destroy()); S.charts = [];
@@ -139,7 +140,7 @@ function render() {
   $('#title').innerHTML = S.view === 'dashboard' ? hi() : NAV.find(n => n[0] === S.view)[2];
   $('#subtitle').textContent = { dashboard: 'Veja o que está acontecendo nas suas finanças', cards: 'Gestão dos cartões de crédito', transfers: 'Entre as suas contas', transactions: 'Todos os lançamentos', payments: 'Contas a pagar e faturas', investments: 'Carteira e alocação', analytics: 'Gráficos e indicadores', settings: 'Preferências e cadastros' }[S.view];
   $('#fab').classList.toggle('hidden', !['dashboard', 'transactions', 'cards', 'payments'].includes(S.view));
-  ({ dashboard, transactions, transfers, cards, payments, investments, analytics: analitica, settings })[S.view]();
+  ({ dashboard: isWide() ? dashboard : dashboardM, transactions, transfers, cards, payments, investments, analytics: analitica, settings })[S.view]();
 }
 
 /* ================= Views ================= */
@@ -155,7 +156,9 @@ const debtSched = d => { const i = (d.rate || 0) / 100, n = d.n, P = d.principal
 const debtBal = (d, m) => m < d.start ? d.principal : (debtSched(d).filter(x => x.m <= m).pop()?.bal ?? d.principal);
 const invAt = e => { const sn = S.snap.filter(x => x.date <= e).sort((a, b) => b.date.localeCompare(a.date))[0]; return sn ? sn.total : S.tx.filter(t => t.invest && t.date <= e).reduce((s, t) => s + t.amount, 0); };
 const hd = (i, t, x = '') => `<div class="flex items-center justify-between mb-3 gap-2"><h3 class="font-semibold text-sm flex items-center gap-2"><span class="text-violet-400">${ic(i, 'w-4 h-4')}</span>${t}</h3>${x}</div>`;
-const mk = (id, cfg) => { const el = $('#' + id); if (el && window.Chart) S.charts.push(new Chart(el, cfg)); };
+const mk = (id, cfg, pick) => { const el = $('#' + id); if (!el || !window.Chart) return; cfg.options = cfg.options || {};
+  cfg.options.onClick = pick ? (e, els, ch) => { if (els.length) pick(els[0].index, ch); } : cfg.options.onClick || ((e, els, ch) => { if (!els.length) return; const m = MN(24).find(x => ml(x) === ch.data.labels[els[0].index]); if (m) { S.month = m; $('#month').value = m; render(); } });
+  S.charts.push(new Chart(el, cfg)); };
 const tip = f => ({ callbacks: { label: f } });
 const yb = { ticks: { callback: v => brl(v) } };
 const sankey = (A, B) => {
@@ -197,6 +200,9 @@ function analiticaAdv() {
   const debtNow = S.debt.reduce((s, d) => s + debtBal(d, S.month), 0), jurosRest = sch.reduce((s, sc) => s + sc.filter(x => x.m > S.month).reduce((a, x) => a + x.it, 0), 0);
   // 9. heatmap
   const dim = new Date(+year, +mon, 0).getDate(), first = new Date(+year, +mon - 1, 1).getDay(), dtot = Array.from({ length: dim }, (_, i) => l.filter(t => t.type === 'expense' && +t.date.slice(8) === i + 1).reduce((s, t) => s + t.amount, 0)), dmax = Math.max(...dtot, 1), dtop = dtot.indexOf(Math.max(...dtot));
+  const dcat = Array.from({ length: dim }, (_, i) => { const o = {}; l.filter(t => t.type === 'expense' && +t.date.slice(8) === i + 1).forEach(t => o[t.categoryId] = (o[t.categoryId] || 0) + t.amount); const e = Object.entries(o).sort((a, b) => b[1] - a[1])[0]; return e ? cat(e[0]).color : null; });
+  const cnt = {}; l.filter(t => t.type === 'expense').forEach(t => { cnt[t.categoryId] = cnt[t.categoryId] || [0, 0]; cnt[t.categoryId][0]++; cnt[t.categoryId][1] += t.amount; });
+  const mu = Object.entries(cnt).sort((a, b) => b[1][0] - a[1][0] || b[1][1] - a[1][1])[0];
   const wd = Array(7).fill(0); MN(3).forEach(m => inMonth(m).filter(t => t.type === 'expense').forEach(t => wd[new Date(t.date + 'T12:00:00').getDay()] += t.amount));
   // 3. alocação / 10. drawdown
   const al = CLS.map((n, i) => [n, S.hold.filter(h => h.cls === n).reduce((s, h) => s + hv(h), 0), CCOL[i]]).filter(x => x[1] > 0), alT = al.reduce((s, x) => s + x[1], 0);
@@ -216,8 +222,8 @@ function analiticaAdv() {
    <div class="card w w6">${hd('activity', 'Taxa de poupança (média móvel 6 meses)', `<b class="text-sm">${f1(rate[11])}%</b>`)}<div class="h-52"><canvas id="sv"></canvas></div></div>
    <div class="card w w6">${hd('banknote', 'Renda passiva vs. custo de vida', `<b class="text-sm ${cob >= 100 ? 'text-emerald-400' : 'text-neutral-300'}">${f1(cob)}% coberto</b>`)}<div class="h-52"><canvas id="ps"></canvas></div><p class="text-[11px] text-neutral-500 mt-2">${cob >= 100 ? 'Ponto de independência financeira atingido neste mês.' : 'Marque categorias de receita como "renda passiva" em Configurações → Categorias.'}</p></div>
    <div class="card w w5">${hd('calendar', 'Mapa de calor de gastos', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}<div class="grid grid-cols-7 gap-1 text-center text-[10px] text-neutral-500 mb-1">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
-    <div class="grid grid-cols-7 gap-1">${'<span></span>'.repeat(first)}${dtot.map((v, i) => `<button data-a="day" data-id="${S.month}-${String(i + 1).padStart(2, '0')}" title="${brl(v)}" class="aspect-square rounded-md text-[10px] text-white/90" style="background:rgba(214,69,80,${v ? (.18 + .82 * v / dmax).toFixed(2) : .06})">${i + 1}</button>`).join('')}</div>
-    <p class="text-[11px] text-neutral-500 mt-2">${des ? `Dia mais caro: ${dtop + 1} (${brl(dtot[dtop])}) · média diária ${brl(des / dim)}. Toque num dia para ver os lançamentos.` : 'Sem despesas neste mês.'}</p></div>
+    <div class="grid grid-cols-7 gap-1">${'<span></span>'.repeat(first)}${dtot.map((v, i) => `<button data-a="day" data-id="${S.month}-${String(i + 1).padStart(2, '0')}" title="${brl(v)}" class="aspect-square rounded-md text-[10px] text-white/90 relative" style="background:rgba(214,69,80,${v ? (.18 + .82 * v / dmax).toFixed(2) : .06})">${i + 1}${dcat[i] ? `<span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style="background:${dcat[i]}"></span>` : ''}</button>`).join('')}</div>
+    <p class="text-[11px] text-neutral-500 mt-2">${des ? `Dia mais caro: ${dtop + 1} (${brl(dtot[dtop])}) · média diária ${brl(des / dim)}. O ponto colorido é a categoria que mais pesou no dia. Toque num dia para ver os lançamentos.` : 'Sem despesas neste mês.'}</p>${mu ? `<div data-a="go" data-v="transactions" data-t="expense" data-c="${mu[0]}" class="flex items-center gap-3 mt-3 p-2.5 rounded-xl bg-[#1d1a33]/70 cursor-pointer"><span>${cat(mu[0]).icon}</span><div class="flex-1 min-w-0"><p class="text-[11px] text-neutral-400">Categoria mais usada</p><p class="text-sm font-semibold truncate">${esc(cat(mu[0]).name)}</p></div><div class="text-right text-xs"><b>${mu[1][0]} lançamentos</b><p class="text-neutral-400">${brl(mu[1][1])}</p></div></div>` : ''}</div>
    <div class="card w w7">${hd('calendar', 'Gastos por dia da semana', `<span class="text-xs text-neutral-400">últimos 3 meses</span>`)}<div class="h-44"><canvas id="wd"></canvas></div></div>
    <p class="w sec">Dívidas e investimentos</p>
    <div class="card w w7">${hd('bank', 'Amortização de dívidas', `<b class="text-sm text-rose-400">${brl(debtNow)}</b>`)}${S.debt.length ? `<div class="h-56"><canvas id="dp"></canvas></div><p class="text-[11px] text-neutral-500 mt-2">Saldo devedor em ${ml(S.month)} · juros ainda a pagar ${brl(jurosRest)} (tabela Price).</p>` : '<p class="text-sm text-neutral-500">Nenhuma dívida cadastrada.</p><button data-a="sub" data-id="patrimonio" class="btn mt-3 !py-1 text-xs">Cadastrar dívida</button>'}</div>
@@ -235,6 +241,51 @@ function analiticaAdv() {
   if (sn.length > 1) mk('dd', { type: 'line', data: { labels: sn.map(x => fdate(x.date).slice(0, 5)), datasets: [{ label: 'Drawdown', data: dd, borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,.25)', fill: true, tension: .2, pointRadius: 2 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ` ${f1(c.parsed.y)}% do topo`) }, scales: { y: { max: 0, ticks: { callback: v => v + '%' } } } } });
   mk('wd', { type: 'bar', data: { labels: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'], datasets: [{ data: wd, backgroundColor: wd.map(v => v === Math.max(...wd) ? '#d64550' : '#9aa0ad') }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { y: yb } } });
+}
+
+const isWide = () => matchMedia('(min-width:768px), (orientation:landscape) and (min-width:560px)').matches;
+const dayStr = off => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4 - off * 864e5).toISOString().slice(0, 10);
+function txModal(title, list, head = '') {
+  openModal(title, `${head}<div>${[...list].sort(byDesc).map(t => `<button type="button" data-a="edit-tx" data-id="${t.id}" class="w-full flex items-center gap-3 py-2 text-left border-b border-slate-200 dark:border-[#26233d]"><span class="flex-1 min-w-0"><span class="block text-sm truncate">${esc(t.description)}</span><span class="block text-[11px] text-neutral-500">${fdate(t.date)} · ${esc(t.type === 'transfer' ? 'Transferência' : cat(t.categoryId).name)}</span></span><b class="text-sm">${brl(t.amount)}</b></button>`).join('') || '<p class="text-sm text-neutral-500">Nada por aqui.</p>'}</div>`, null, true);
+}
+const dayModal = d => { const o = {}; S.tx.filter(t => t.date === d && t.type === 'expense').forEach(t => o[t.categoryId] = (o[t.categoryId] || 0) + t.amount);
+  const chips = Object.entries(o).sort((a, b) => b[1] - a[1]).map(([id, v]) => `<span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-[#1d1a33] mr-1 mb-1">${cat(id).icon}${esc(cat(id).name)} ${brl(v)}</span>`).join('');
+  txModal(fdate(d), S.tx.filter(t => t.date === d), chips ? `<p class="text-[11px] text-neutral-400">Categorias do dia</p><div class="mb-2">${chips}</div>` : ''); };
+
+/* ---- Dashboard do celular (retrato): uma coluna, números grandes, listas e rolagem horizontal ---- */
+function dashboardM() {
+  const l = inMonth(S.month), des = sum(l, 'expense'), f1 = v => v.toFixed(1).replace('.', ','), pct = (a, b) => b > 0 ? Math.max(0, Math.min(100, Math.round(a / b * 100))) : 0, kf = v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0).replace('.', ',') + 'K' : v;
+  const by = {}; l.filter(t => t.type === 'expense').forEach(t => by[t.categoryId] = (by[t.categoryId] || 0) + t.amount);
+  let top = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([id, v]) => ({ id, n: cat(id).name, v, c: cat(id).color })); if (top.length > 5) top = [...top.slice(0, 4), { id: '', n: 'Outras', v: top.slice(4).reduce((s, x) => s + x.v, 0), c: '#78716c' }];
+  const rg = S.range || '1M', days = { '1S': 7, '1M': 30, '3M': 90, '6M': 180, '1A': 365 }[rg], step = days > 90 ? 3 : 1, off = []; for (let o = days - 1; o > 0; o -= step) off.push(o); off.push(0);
+  const hd0 = off.map(dayStr), hv0 = hd0.map(e => S.acc.reduce((s, a) => s + balance(a, e), 0)), cur = hv0[hv0.length - 1], d0 = cur - hv0[0], p0 = hv0[0] ? d0 / Math.abs(hv0[0]) * 100 : 0;
+  const seg = S.seg || 'expense', per = S.per || '12M'; let keys, labs, vals;
+  if (per === '12M') { keys = MN(12); labs = keys.map(ml); vals = keys.map(m => sum(inMonth(m), seg)); } else { const n = per === '7D' ? 7 : 30; keys = Array.from({ length: n }, (_, i) => dayStr(n - 1 - i)); labs = keys.map(fdate); vals = keys.map(d => S.tx.filter(t => t.date === d && t.type === seg).reduce((s, t) => s + t.amount, 0)); }
+  const last = vals.length - 1, hl = i => vals.map((_, k) => k === i ? '#7c5cf0' : 'rgba(148,148,170,.3)');
+  const chip = (a, id, lb, on) => `<button data-a="${a}" data-id="${id}" class="chip ${on ? 'on' : ''}">${lb}</button>`, sec = (t, x = '') => `<div class="flex items-center justify-between mb-2"><h3 class="font-semibold">${t}</h3>${x}</div>`, lk = (a, id, t) => `<button data-a="${a}" data-id="${id}" class="text-xs text-indigo-300">${t}</button>`;
+  const rt = [...S.tx].sort(byDesc).slice(0, 5).map(t => { const c = t.type === 'transfer' ? { icon: ic('swap', 'w-5 h-5'), color: '#64748b' } : cat(t.categoryId), col = t.type === 'income' ? 'text-emerald-400' : t.type === 'expense' ? 'text-rose-400' : 'text-neutral-400', sg = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
+    return `<div data-a="edit-tx" data-id="${t.id}" class="card !p-3 flex items-center gap-3 mb-2 cursor-pointer"><span class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:${c.color}26">${c.icon}</span><div class="flex-1 min-w-0"><p class="text-sm truncate">${esc(t.description)}</p><p class="text-[11px] text-neutral-500">${fdate(t.date)}</p></div><b class="text-sm ${col}">${sg}${brl(t.amount)}</b></div>`; }).join('');
+  $('#view').innerHTML = `<div class="space-y-6">
+   <div class="card !p-4" style="background:linear-gradient(160deg,#2a2370,#14122a 75%)"><div class="flex justify-between items-center"><p class="text-sm text-neutral-300">Saldo total</p>${lk('nav', 'transfers', 'Contas')}</div><p class="text-4xl font-bold mt-1">${brl(cur)}</p>
+    <p class="text-xs mt-1 ${d0 >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${d0 >= 0 ? '▲' : '▼'} ${f1(Math.abs(p0))}% · ${brl(Math.abs(d0))} no período</p><div class="h-32 mt-3"><canvas id="hb"></canvas></div>
+    <div class="flex justify-between mt-3">${['1S', '1M', '3M', '6M', '1A'].map(r => chip('range', r, r, rg === r)).join('')}</div></div>
+   <div class="grid grid-cols-4 gap-2 text-center">${[['qa-exp', 'up', 'Despesa', '#fb7185'], ['qa-inc', 'down', 'Receita', '#34d399'], ['new-transfer', 'swap', 'Transferir', '#818cf8'], ['search', 'search', 'Buscar', '#fbbf24']].map(([a, i, n, c]) => `<button data-a="${a}" class="flex flex-col items-center gap-1.5"><span class="card !p-0 w-14 h-14 rounded-2xl flex items-center justify-center" style="color:${c}">${ic(i, 'w-6 h-6')}</span><span class="text-[11px] text-neutral-400">${n}</span></button>`).join('')}</div>
+   <div class="card"><div class="grid grid-cols-2 gap-1 mb-3">${chip('seg', 'income', 'Receitas', seg === 'income')}${chip('seg', 'expense', 'Despesas', seg === 'expense')}</div>
+    <p id="sbl" class="text-xs text-neutral-400">${labs[last]}</p><p id="sbv" class="text-3xl font-bold">${brl(vals[last])}</p>
+    <div class="flex gap-2 my-3">${['7D', '30D', '12M'].map(p => chip('per', p, p, per === p)).join('')}</div><div class="h-44"><canvas id="sb"></canvas></div>
+    <div class="flex justify-between items-center mt-2"><span class="text-[11px] text-neutral-500">Toque numa barra para ver o valor</span><button data-a="go" data-v="transactions" data-t="${seg}" class="text-xs text-indigo-300">Ver lançamentos</button></div></div>
+   <div>${sec('Contas', lk('new-transfer', '', 'Transferir'))}${S.acc.map(a => `<div data-a="new-transfer" data-id="${a.id}" class="card !p-3 flex items-center gap-3 mb-2 cursor-pointer"><span class="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-500/20 text-indigo-300">${ic('bank', 'w-5 h-5')}</span><div class="flex-1"><p class="font-medium text-sm">${esc(a.name)}</p><p class="text-[11px] text-neutral-500">${esc(a.type)}</p></div><b>${brl(balance(a))}</b></div>`).join('')}</div>
+   <div>${sec('Cartões', lk('new-card', '', '+ Novo'))}<div class="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4">${S.card.map(c => `<div data-a="card" data-id="${c.id}" class="snap-start shrink-0 w-64 rounded-2xl p-4 text-white cursor-pointer" style="background:linear-gradient(135deg,#4338ca,#6d28d9 55%,#c026d3)"><div class="flex justify-between items-center text-sm"><b>${esc(c.name)}</b>${ic('card', 'w-5 h-5')}</div><p class="text-[11px] opacity-70 mt-5">Fatura ${ml(S.month)}</p><p class="text-2xl font-bold">${brl(fatura(c, S.month))}</p><div class="h-1.5 rounded-full bg-white/25 mt-3"><div class="h-1.5 rounded-full bg-white" style="width:${pct(used(c), c.limit)}%"></div></div><div class="flex justify-between text-[11px] opacity-80 mt-1"><span>Limite usado ${pct(used(c), c.limit)}%</span><span>vence dia ${c.due}</span></div></div>`).join('') || '<p class="text-sm text-neutral-500">Nenhum cartão cadastrado.</p>'}</div></div>
+   <div>${sec('Metas do mês', lk('sub', 'metas', 'Gerenciar'))}<div class="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4">${S.goal.map(g => { const sp = by[g.categoryId] || 0, p = pct(sp, g.limit), c = cat(g.categoryId); return `<div data-a="go" data-v="transactions" data-t="expense" data-c="${g.categoryId}" class="card snap-start shrink-0 w-40 cursor-pointer"><span class="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style="background:${c.color}26">${c.icon}</span><p class="text-sm font-medium truncate">${esc(c.name)}</p><p class="text-[11px] text-neutral-400">${brl(sp)} / ${brl(g.limit)}</p><div class="h-1.5 rounded-full bg-slate-200 dark:bg-[#25233d] mt-2"><div class="h-1.5 rounded-full" style="width:${p}%;background:${p >= 100 ? '#fb7185' : '#7c5cf0'}"></div></div></div>`; }).join('')}<button data-a="new-goal" class="card snap-start shrink-0 w-40 flex flex-col items-center justify-center gap-1 text-neutral-400 border-dashed">${ic('plus', 'w-6 h-6')}<span class="text-xs">Nova meta</span></button></div></div>
+   <div class="card">${sec('Gastos por categoria', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}${top.length ? `<div class="relative h-44"><canvas id="mc"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span class="text-[11px] text-neutral-400">Total gasto</span><b class="text-lg">${brl(des)}</b></div></div><div class="mt-3">${top.map(x => `<div data-a="go" data-v="transactions" data-t="expense" data-c="${x.id}" class="flex items-center gap-3 py-2 cursor-pointer border-t border-slate-200 dark:border-[#26233d]"><span class="w-2.5 h-2.5 rounded-full" style="background:${x.c}"></span><span class="flex-1 text-sm truncate">${esc(x.n)}</span><b class="text-sm">${brl(x.v)}</b><span class="w-10 text-right text-xs text-neutral-400">${pct(x.v, des)}%</span></div>`).join('')}</div>` : '<p class="text-sm text-neutral-500">Sem despesas neste mês.</p>'}</div>
+   <div>${sec('Últimas transações', lk('nav', 'transactions', 'Ver todas'))}${rt || '<p class="text-sm text-neutral-500">Sem transações.</p>'}</div></div>`;
+  mk('hb', { type: 'line', data: { labels: hd0.map(d => fdate(d).slice(0, 5)), datasets: [{ label: 'Saldo', data: hv0, borderColor: '#8b5cf6', backgroundColor: 'rgba(124,92,240,.25)', fill: true, tension: .35, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2 }] },
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { x: { display: false }, y: { display: false } } } }, () => {});
+  mk('sb', { type: 'bar', data: { labels: per === '12M' ? labs.map(x => x.slice(0, 3)) : keys.map(d => d.slice(8)), datasets: [{ label: seg === 'income' ? 'Receitas' : 'Despesas', data: vals, backgroundColor: hl(last), borderRadius: 6 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } }, y: { ticks: { callback: kf, font: { size: 9 } } } } } },
+    (i, ch) => { ch.data.datasets[0].backgroundColor = hl(i); ch.update(); $('#sbv').textContent = brl(vals[i]); $('#sbl').textContent = labs[i]; });
+  if (top.length) mk('mc', { type: 'doughnut', data: { labels: top.map(x => x.n), datasets: [{ data: top.map(x => x.v), backgroundColor: top.map(x => x.c), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } },
+    i => { if (top[i].id) { S.view = 'transactions'; S.ftype = 'expense'; S.fcat = top[i].id; render(); } });
 }
 
 function analitica() {
@@ -277,16 +328,16 @@ function analitica() {
    ${tile('Pagas vs. pendentes', String(pend.filter(t => t.date.startsWith(S.month)).length), 'Despesas pendentes no mês', 'a12', 'Transações')}
   </div><p class="sec mt-4 mb-2">Análises avançadas</p><div id="adv"></div>`;
   mk('a1', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Receitas', data: recM, backgroundColor: M12.map((_, i) => i === cur ? R : G) }] }, options: op(false) });
-  mk('a2', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Despesas', data: daily, borderColor: '#e07a7a', borderWidth: 1.5, tension: .3, pointRadius: 0 }] }, options: op(false) });
-  mk('a3', { type: 'bar', data: { labels: weeks.map((_, i) => 'Sem ' + (i + 1)), datasets: [{ label: 'Despesas', data: weeks, backgroundColor: Y }] }, options: op(false) });
-  mk('a4', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Acumulado', data: cumD, borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1 }, { label: 'Meta (linear)', data: proj, borderColor: GR, backgroundColor: '#3f9b7422', fill: true, pointRadius: 0 }] }, options: op(false, true) });
-  mk('a5', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Pago', data: cBuy.map((v, i) => Math.min(v, cPaid[i])), backgroundColor: G }, { label: 'Em aberto', data: cBuy.map((v, i) => Math.max(0, v - cPaid[i])), backgroundColor: R }] }, options: op(true, true) });
-  mk('a6', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Líquido', data: recM.map((v, i) => v - desM[i]), borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1, order: 0 }, { label: 'Receitas', data: recM, backgroundColor: GR }, { label: 'Despesas', data: desM.map(v => -v), backgroundColor: R }] }, options: op(false, true) });
-  if (cs.length) mk('a7', { type: 'doughnut', data: { labels: cs.map(x => cat(x[0]).name), datasets: [{ data: cs.map(x => x[1]), backgroundColor: RP, borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } });
+  mk('a2', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Despesas', data: daily, borderColor: '#e07a7a', borderWidth: 1.5, tension: .3, pointRadius: 0 }] }, options: op(false) }, i => dayModal(S.month + '-' + String(i + 1).padStart(2, '0')));
+  mk('a3', { type: 'bar', data: { labels: weeks.map((_, i) => 'Sem ' + (i + 1)), datasets: [{ label: 'Despesas', data: weeks, backgroundColor: Y }] }, options: op(false) }, i => txModal('Semana ' + (i + 1), l.filter(t => t.type === 'expense' && Math.floor((+t.date.slice(8) - 1) / 7) === i)));
+  mk('a4', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Acumulado', data: cumD, borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1 }, { label: 'Meta (linear)', data: proj, borderColor: GR, backgroundColor: '#3f9b7422', fill: true, pointRadius: 0 }] }, options: op(false, true) }, i => dayModal(S.month + '-' + String(i + 1).padStart(2, '0')));
+  mk('a5', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Pago', data: cBuy.map((v, i) => Math.min(v, cPaid[i])), backgroundColor: G }, { label: 'Em aberto', data: cBuy.map((v, i) => Math.max(0, v - cPaid[i])), backgroundColor: R }] }, options: op(true, true) }, i => { S.month = M12[i]; $('#month').value = S.month; S.view = 'cards'; render(); });
+  mk('a6', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Líquido', data: recM.map((v, i) => v - desM[i]), borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1, order: 0 }, { label: 'Receitas', data: recM, backgroundColor: GR }, { label: 'Despesas', data: desM.map(v => -v), backgroundColor: R }] }, options: op(false, true) }, i => { S.month = M12[i]; $('#month').value = S.month; S.view = 'transactions'; S.ftype = S.fcat = ''; render(); });
+  if (cs.length) mk('a7', { type: 'doughnut', data: { labels: cs.map(x => cat(x[0]).name), datasets: [{ data: cs.map(x => x[1]), backgroundColor: RP, borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } }, i => { S.view = 'transactions'; S.ftype = 'expense'; S.fcat = cs[i][0]; render(); });
   mk('a8', { type: 'line', data: { labels: M12.map(ml), datasets: [{ label: 'Taxa mensal', data: rate, borderColor: Y, pointBackgroundColor: Y, pointRadius: 2, borderWidth: 1 }, { label: 'Média móvel 6m', data: ma, borderColor: W, borderDash: [4, 3], pointRadius: 0 }] }, options: op(false, true, { plugins: { legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.dataset.label}: ${f1(c.parsed.y)}%`) } }) });
   mk('a9', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Patrimônio', data: nwT, backgroundColor: GR }] }, options: op(false) });
   mk('a10', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Carteira', data: cart, borderColor: Y, pointBackgroundColor: Y, pointRadius: 2, yAxisID: 'y1', order: 0 }, { label: 'Aportes', data: apo, backgroundColor: B }] }, options: op(false, true, { scales: { ...sc(false), y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: kf, font: { size: 9 } } } } }) });
-  mk('a12', { type: 'bar', data: { labels: M6.map(ml), datasets: [{ label: 'Pagas', data: paidM, backgroundColor: G }, { label: 'Pendentes', data: pendM, backgroundColor: R }] }, options: op(true, true) });
+  mk('a12', { type: 'bar', data: { labels: M6.map(ml), datasets: [{ label: 'Pagas', data: paidM, backgroundColor: G }, { label: 'Pendentes', data: pendM, backgroundColor: R }] }, options: op(true, true) }, () => { S.view = 'payments'; render(); });
   analiticaAdv();
 }
 
@@ -649,7 +700,12 @@ document.addEventListener('click', async e => {
     case 'del-goal': if (confirm('Excluir meta?')) await DB.remove('goals', id); break;
     case 'drawer': $('#side').classList.toggle('open'); $('#scrim').classList.toggle('hidden'); break;
     case 'search': openSearch(); break;
-    case 'day': { const it = S.tx.filter(t => t.date === id).sort((a, c) => c.amount - a.amount); openModal(fdate(id), `<div>${it.map(t => `<button type="button" data-a="edit-tx" data-id="${t.id}" class="w-full flex justify-between py-2 text-sm text-left border-b border-slate-200 dark:border-[#26233d]"><span>${esc(t.description)}</span><b>${brl(t.amount)}</b></button>`).join('') || '<p class="text-sm text-neutral-500">Sem lançamentos neste dia.</p>'}</div>`, null, true); break; }
+    case 'day': dayModal(id); break;
+    case 'range': S.range = id; render(); break;
+    case 'seg': S.seg = id; render(); break;
+    case 'per': S.per = id; render(); break;
+    case 'qa-exp': txForm({ type: 'expense' }); break;
+    case 'qa-inc': txForm({ type: 'income' }); break;
     case 'new-asset': assetForm(); break;
     case 'edit-asset': assetForm(S.asset.find(x => x.id === id)); break;
     case 'del-asset': if (confirm('Excluir bem?')) await DB.remove('assets', id); break;
@@ -682,6 +738,7 @@ $('#month').addEventListener('change', e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test
 document.addEventListener('change', e => { if (e.target.id === 'mp') localStorage.metaPoup = e.target.value; if (e.target.id === 'mr') localStorage.metaRunway = e.target.value; });
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 document.addEventListener('db:change', async () => { await load(); render(); });
+matchMedia('(min-width:768px), (orientation:landscape) and (min-width:560px)').addEventListener('change', () => render());
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); render(); });
 
 /* ================= Inicialização ================= */
