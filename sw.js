@@ -1,6 +1,6 @@
 // sw.js — Cache-First para assets estáticos (locais + CDN). Chamadas à API do GitHub nunca são interceptadas.
 // Ao alterar qualquer arquivo do app, incremente VERSION para forçar a atualização do cache.
-const VERSION = 'fp-v8';
+const VERSION = 'fp-v9';
 const LOCAL = ['./', 'index.html', 'app.js', 'db.js', 'github-sync.js', 'manifest.json'];
 const OPT = ['ic-financas-180.png', 'ic-financas-192.png', 'ic-financas-512.png', 'ic-nostos-180.png', 'ic-nostos-192.png', 'ic-nostos-512.png']; // ícones: não bloqueiam a instalação se faltar algum
 const CDN = [
