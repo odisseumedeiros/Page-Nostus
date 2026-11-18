@@ -8,12 +8,13 @@ export const getCfg = () => { try { return JSON.parse(localStorage.getItem(KEY))
 export const saveCfg = c => localStorage.setItem(KEY, JSON.stringify(c));
 const ready = c => c.owner && c.repo && c.token;
 
-let busy = false, timer = null, status = 'signedout';
+let lastErr = '', busy = false, timer = null, status = 'signedout';
 const subs = [];
 const set = s => { status = s; subs.forEach(f => f(s)); };
 // status: synced | syncing | offline | auth | signedout | error
 export const onStatus = f => subs.push(f);
 export const getStatus = () => status;
+export const getErr = () => lastErr;
 
 // Base64 com suporte a UTF-8 (acentos)
 const b64e = s => {
@@ -85,9 +86,10 @@ export async function sync() {
       done = true;
     }
     if (!done) throw new Error('Conflito persistente');
-    set('synced');
+    lastErr = ''; set('synced');
   } catch (e) {
     console.error('sync', e);
+    lastErr = e.message === 'Failed to fetch' ? 'sem conexão com o GitHub' : (e.message || String(e));
     set(e.auth ? 'auth' : navigator.onLine ? 'error' : 'offline');
   } finally { busy = false; }
 }
