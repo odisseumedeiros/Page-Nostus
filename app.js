@@ -142,7 +142,7 @@ function render() {
   });
   const hi = () => { const h = new Date().getHours(); return 'Olá, ' + (localStorage.nome ? esc(localStorage.nome) + ', ' : '') + 'bem-vindo de volta'; };
   $('#title').innerHTML = S.view === 'dashboard' ? hi() : NAV.find(n => n[0] === S.view)[2];
-  $('#subtitle').textContent = { dashboard: 'Veja o que está acontecendo nas suas finanças', cards: 'Gestão dos cartões de crédito', transfers: 'Entre as suas contas', transactions: 'Todos os lançamentos', payments: 'Contas a pagar e faturas', investments: 'Carteira e alocação', analytics: 'Gráficos e indicadores', settings: 'Preferências e cadastros' }[S.view];
+  $('#subtitle').textContent = { dashboard: 'Veja o que está acontecendo nas suas finanças', cards: 'Gestão dos cartões de crédito', transfers: 'Entre as suas contas', transactions: 'Todos os lançamentos', payments: 'A pagar e a receber', investments: 'Carteira e alocação', analytics: 'Gráficos e indicadores', settings: 'Preferências e cadastros' }[S.view];
   $('#fab').classList.toggle('hidden', !['dashboard', 'transactions', 'cards', 'payments'].includes(S.view));
   ({ dashboard: isWide() ? dashboard : dashboardM, transactions, transfers, cards, payments, investments, analytics: analitica, settings })[S.view]();
 }
@@ -252,12 +252,13 @@ const DIAF = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sáb
 function alerts() {
   const hoje = nowDate(), d7 = dayStr(-7), m0 = hoje.slice(0, 7), pend = S.tx.filter(t => t.type === 'expense' && t.status === 'pending' && !t.cardId);
   const fat = S.card.map(c => ({ c, v: fatura(c, m0) - faturaPaga(c, m0), due: `${m0}-${String(Math.min(c.due, 28)).padStart(2, '0')}` })).filter(x => x.v > .005);
-  return { hoje, d7, over: pend.filter(t => t.date < hoje), soon: pend.filter(t => t.date >= hoje && t.date <= d7), later: pend.filter(t => t.date > d7), fat, fOver: fat.filter(x => x.due < hoje), fSoon: fat.filter(x => x.due >= hoje && x.due <= d7) };
+  const rec = S.tx.filter(t => t.type === 'income' && t.status === 'pending');
+  return { hoje, d7, over: pend.filter(t => t.date < hoje), soon: pend.filter(t => t.date >= hoje && t.date <= d7), later: pend.filter(t => t.date > d7), fat, fOver: fat.filter(x => x.due < hoje), fSoon: fat.filter(x => x.due >= hoje && x.due <= d7), rOver: rec.filter(t => t.date < hoje), rSoon: rec.filter(t => t.date >= hoje && t.date <= d7), rLater: rec.filter(t => t.date > d7) };
 }
 function paintBell() {
-  const a = alerts(), red = a.over.length + a.fOver.length, amb = a.soon.length + a.fSoon.length, n = red + amb;
+  const a = alerts(), red = a.over.length + a.fOver.length + a.rOver.length, amb = a.soon.length + a.fSoon.length + a.rSoon.length, n = red + amb;
   $('#bell').innerHTML = ic('bell') + (n ? `<span class="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${red ? 'bg-rose-500' : 'bg-amber-500'}">${n}</span>` : '');
-  $('#bell').title = n ? `${red} atrasada(s) · ${amb} vencendo em 7 dias` : 'Nada vencendo ou atrasado';
+  $('#bell').title = n ? `${red} atrasado(s) · ${amb} vencendo em 7 dias (pagamentos e recebimentos)` : 'Nada vencendo ou atrasado';
 }
 const gob = (label, v, o = {}) => `<button type="button" data-a="go" data-v="${v}" data-t="${o.t || ''}" data-c="${o.c || ''}" data-m="${o.m || ''}" class="btn ${o.p ? 'btn-p' : ''} flex-1">${label}</button>`;
 const rowTx = t => `<button type="button" data-a="edit-tx" data-id="${t.id}" class="w-full flex items-center gap-3 py-2 text-left border-b border-slate-200 dark:border-[#26233d]"><span class="flex-1 min-w-0"><span class="block text-sm truncate">${esc(t.description)}</span><span class="block text-[11px] text-neutral-500">${fdate(t.date)}</span></span><b class="text-sm">${brl(t.amount)}</b></button>`;
@@ -282,7 +283,7 @@ function saldoDetail() {
 }
 function payPop() {
   const a = alerts();
-  dpop('Contas a pagar', [['Atrasadas', brl(sumBy(a.over, amt) + sumBy(a.fOver, x => x.v)), 'text-rose-400'], ['Vencendo em 7 dias', brl(sumBy(a.soon, amt) + sumBy(a.fSoon, x => x.v)), 'text-amber-400'], ['Mais adiante', brl(sumBy(a.later, amt))], ['Faturas abertas', brl(sumBy(a.fat, x => x.v))]], a.over.concat(a.soon), [gob('Abrir Pagamentos', 'payments', { p: 1 })]);
+  dpop('Contas a pagar e a receber', [['A pagar em atraso', brl(sumBy(a.over, amt) + sumBy(a.fOver, x => x.v)), 'text-rose-400'], ['A pagar em 7 dias', brl(sumBy(a.soon, amt) + sumBy(a.fSoon, x => x.v)), 'text-amber-400'], ['A receber em atraso', brl(sumBy(a.rOver, amt)), 'text-emerald-400'], ['A receber em 7 dias', brl(sumBy(a.rSoon, amt)), 'text-emerald-400'], ['Mais adiante (pagar)', brl(sumBy(a.later, amt))], ['Faturas abertas', brl(sumBy(a.fat, x => x.v))]], a.over.concat(a.soon, a.rOver, a.rSoon), [gob('Abrir Pagamentos', 'payments', { p: 1 })]);
 }
 function cardMonth(m) {
   dpop('Cartões · ' + ml(m), S.card.flatMap(c => [[c.name + ' · fatura', brl(fatura(c, m))], [c.name + ' · pago', brl(faturaPaga(c, m))]]), null, [gob('Abrir Cartões', 'cards', { m, p: 1 })]);
@@ -554,13 +555,30 @@ function payForm(id) {
 }
 
 function payments() {
-  const a = alerts(), sm = arr => arr.reduce((s, t) => s + t.amount, 0), fs = arr => arr.reduce((s, x) => s + x.v, 0);
-  const grp = [['Atrasadas', a.over, a.fOver, 'text-rose-400'], ['Vencendo em 7 dias', a.soon, a.fSoon, 'text-amber-400'], ['Mais adiante', a.later, a.fat.filter(x => x.due > a.d7), 'text-neutral-300']];
-  const row = t => `<div class="card !p-3 flex items-center gap-3"><div data-a="edit-tx" data-id="${t.id}" class="flex-1 min-w-0 cursor-pointer"><p class="font-medium truncate">${esc(t.description)}</p><p class="text-xs ${t.date < a.hoje ? 'text-rose-400' : 'text-neutral-500'}">${t.date < a.hoje ? 'Atrasada · ' : ''}${fdate(t.date)} · ${esc(cat(t.categoryId).name)}</p></div><b>${brl(t.amount)}</b><button data-a="toggle" data-id="${t.id}" class="btn btn-p !py-1 text-xs">Pagar</button></div>`;
-  const frow = x => `<div data-a="card" data-id="${x.c.id}" class="card !p-3 flex items-center gap-3 cursor-pointer hover:border-violet-500"><span class="text-violet-400">${ic('card', 'w-6 h-6')}</span><div class="flex-1"><p class="font-medium">Fatura ${esc(x.c.name)}</p><p class="text-xs ${x.due < a.hoje ? 'text-rose-400' : 'text-neutral-500'}">${x.due < a.hoje ? 'Vencida · ' : 'Vence '}${fdate(x.due)}</p></div><b>${brl(x.v)}</b></div>`;
-  const t3 = [['Em atraso', sm(a.over) + fs(a.fOver), 'text-rose-400'], ['Vence em 7 dias', sm(a.soon) + fs(a.fSoon), 'text-amber-400'], ['Total pendente', sm(a.over.concat(a.soon, a.later)) + fs(a.fat), 'text-violet-400']];
-  const body = grp.filter(g => g[1].length || g[2].length).map(([n, tx, fv, c]) => `<p class="text-sm font-semibold ${c} mt-4 mb-2">${n} · ${tx.length + fv.length}</p><div class="space-y-2">${fv.map(frow).join('')}${tx.map(row).join('')}</div>`).join('');
-  $('#view').innerHTML = `<div class="grid grid-cols-3 gap-3 mb-2">${t3.map(([l, v, c]) => `<div class="card"><p class="text-xs text-neutral-400">${l}</p><p class="font-bold ${c}">${brl(v)}</p></div>`).join('')}</div>${body || '<p class="text-center text-neutral-500 py-10">Nada pendente.</p>'}`;
+  const a = alerts(), f = S.pf || 'pend', ty = S.pt || '', hoje = a.hoje, sm = arr => arr.reduce((s, x) => s + (x.v ?? x.amount), 0);
+  const fpay = S.tx.filter(t => t.type === 'transfer' && t.cardId && t.date.startsWith(S.month)), doneP = S.tx.filter(t => t.type === 'expense' && t.status === 'paid' && !t.cardId && t.date.startsWith(S.month)), doneR = S.tx.filter(t => t.type === 'income' && t.status === 'paid' && t.date.startsWith(S.month));
+  const SET = { over: { p: a.over, fp: a.fOver, r: a.rOver }, soon: { p: a.soon, fp: a.fSoon, r: a.rSoon }, pend: { p: a.over.concat(a.soon, a.later), fp: a.fat, r: a.rOver.concat(a.rSoon, a.rLater) }, done: { p: doneP, fp: [], r: doneR, fpay } };
+  const R = SET[f], rows = [];
+  if (ty !== 'income') { R.p.forEach(t => rows.push({ d: t.date, t })); R.fp.forEach(x => rows.push({ d: x.due, x })); (R.fpay || []).forEach(t => rows.push({ d: t.date, t, fpay: 1 })); }
+  if (ty !== 'expense') R.r.forEach(t => rows.push({ d: t.date, t }));
+  rows.sort((x, y) => f === 'done' ? y.d.localeCompare(x.d) : x.d.localeCompare(y.d));
+  const gn = `Realizados em ${ml(S.month)}`, grpOf = d => f === 'done' ? gn : d < hoje ? 'Atrasados' : d <= a.d7 ? 'Vencendo em 7 dias' : 'Mais adiante';
+  const GC = { 'Atrasados': 'text-rose-400', 'Vencendo em 7 dias': 'text-amber-400', 'Mais adiante': 'text-neutral-300', [gn]: 'text-emerald-400' }, groups = {};
+  rows.forEach(r => (groups[grpOf(r.d)] ||= []).push(r));
+  const pill = (txt, inc) => `<span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${inc ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${txt}</span>`;
+  const row = r => {
+    if (r.x) return `<div data-a="card" data-id="${r.x.c.id}" class="card !p-3 flex items-center gap-3 cursor-pointer hover:border-violet-500"><span class="text-violet-400">${ic('card', 'w-6 h-6')}</span><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-medium truncate">Fatura ${esc(r.x.c.name)}</p>${pill('A pagar')}</div><p class="text-xs ${r.x.due < hoje ? 'text-rose-400' : 'text-neutral-500'}">${r.x.due < hoje ? 'Vencida · ' : 'Vence '}${fdate(r.x.due)}</p></div><b>${brl(r.x.v)}</b></div>`;
+    const t = r.t;
+    if (r.fpay) return `<div data-a="card" data-id="${t.cardId}" class="card !p-3 flex items-center gap-3 cursor-pointer"><span class="text-violet-400">${ic('card', 'w-6 h-6')}</span><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-medium truncate">Fatura ${esc(cardName(t.cardId))}</p>${pill('Pago')}</div><p class="text-xs text-neutral-500">${fdate(t.date)}</p></div><b>${brl(t.amount)}</b></div>`;
+    const inc = t.type === 'income', done = t.status === 'paid', late = !done && t.date < hoje;
+    return `<div class="card !p-3 flex items-center gap-3"><div data-a="edit-tx" data-id="${t.id}" class="flex-1 min-w-0 cursor-pointer"><div class="flex items-center gap-2"><p class="font-medium truncate">${esc(t.description)}</p>${pill(inc ? (done ? 'Recebido' : 'A receber') : (done ? 'Pago' : 'A pagar'), inc)}</div><p class="text-xs ${late ? 'text-rose-400' : 'text-neutral-500'}">${late ? 'Atrasado · ' : ''}${fdate(t.date)} · ${esc(cat(t.categoryId).name)}</p></div><b class="${inc ? 'text-emerald-400' : ''}">${inc ? '+' : ''}${brl(t.amount)}</b><button data-a="toggle" data-id="${t.id}" class="btn ${done ? '' : 'btn-p'} !py-1 text-xs">${done ? 'Desfazer' : inc ? 'Receber' : 'Pagar'}</button></div>`;
+  };
+  const cd = (id, lb, p, r, lp, lr) => `<button data-a="pf" data-id="${id}" class="card text-left ${f === id ? '!border-violet-500 ring-1 ring-violet-500/40' : ''}"><p class="text-xs font-semibold">${lb}</p><p class="text-[11px] text-neutral-500 mt-1">${lp}</p><p class="font-bold text-rose-400">${brl(p)}</p><p class="text-[11px] text-neutral-500 mt-1">${lr}</p><p class="font-bold text-emerald-400">${brl(r)}</p></button>`;
+  const cards = cd('over', 'Em atraso', sm(a.over) + sm(a.fOver), sm(a.rOver), 'A pagar', 'A receber') + cd('soon', 'Vence em 7 dias', sm(a.soon) + sm(a.fSoon), sm(a.rSoon), 'A pagar', 'A receber')
+    + cd('pend', 'Pendentes', sm(SET.pend.p) + sm(a.fat), sm(SET.pend.r), 'A pagar', 'A receber') + cd('done', 'Realizados no mês', sm(doneP) + sm(fpay), sm(doneR), 'Pagos', 'Recebidos');
+  const chips = [['', 'Todos'], ['expense', 'A pagar'], ['income', 'A receber']].map(([v, n]) => `<button data-a="pt" data-id="${v}" class="chip ${ty === v ? 'on' : ''}">${n}</button>`).join('');
+  const body = [...(f === 'done' ? [gn] : ['Atrasados', 'Vencendo em 7 dias', 'Mais adiante'])].filter(g => groups[g]).map(g => `<p class="text-sm font-semibold ${GC[g]} mt-4 mb-2">${g} · ${groups[g].length}</p><div class="space-y-2">${groups[g].map(row).join('')}</div>`).join('');
+  $('#view').innerHTML = `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">${cards}</div><div class="flex gap-2 items-center"><span class="text-xs text-neutral-500">Mostrar:</span>${chips}</div>${body || `<p class="text-center text-neutral-500 py-10">${f === 'done' ? 'Nada realizado neste mês.' : f === 'over' ? 'Nada atrasado.' : f === 'soon' ? 'Nada vencendo nos próximos 7 dias.' : 'Nada pendente.'}</p>`}`;
 }
 
 const CLS = ['Ações', 'FIIs', 'Cripto', 'Fundos', 'Renda fixa', 'Outros'], CCOL = ['#8b5cf6', '#eab308', '#a855f7', '#0ea5e9', '#22c55e', '#78716c'];
@@ -810,6 +828,9 @@ document.addEventListener('click', async e => {
     case 'kpi': if (id === 'saldo') saldoDetail(); else monthDetail(S.month); break;
     case 'payd': payPop(); break;
     case 'poup': poupPop(); break;
+    case 'pf': S.pf = S.pf === id && id !== 'pend' ? 'pend' : id; render(); break;
+    case 'pt': S.pt = id; render(); break;
+    case 'bell': S.pf = 'pend'; S.pt = ''; S.view = 'payments'; closeDrawer(); render(); break;
     case 'close': closeModal(); break;
     case 'theme': localStorage.theme = { auto: 'light', light: 'dark', dark: 'auto' }[localStorage.theme || 'dark']; applyTheme(); render(); break;
     case 'signin': S.view = 'settings'; S.sub = 'integracoes'; render(); break;
