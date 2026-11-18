@@ -1,7 +1,7 @@
 // sw.js — Cache-First: o app inteiro é local (sem CDN), então abre e funciona 100% offline.
 // As chamadas à API do GitHub (outro domínio) nunca passam por aqui.
 // Ao alterar qualquer arquivo do app, incremente VERSION para forçar a atualização do cache.
-const VERSION = 'fp-v10';
+const VERSION = 'fp-v11';
 const LOCAL = ['./', 'index.html', 'styles.css', 'chart.umd.min.js', 'app.js', 'db.js', 'github-sync.js', 'manifest.json'];
 const OPT = ['ic-financas-180.png', 'ic-financas-192.png', 'ic-financas-512.png', 'ic-nostos-180.png', 'ic-nostos-192.png', 'ic-nostos-512.png']; // ícones: não bloqueiam a instalação se faltar algum
 
