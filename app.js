@@ -55,6 +55,7 @@ const ICONS = {
   swap: '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
   list: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   trending: '<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>',
   sliders: '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
   menu: '<line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>',
@@ -115,9 +116,12 @@ const ST = {
 };
 function paintStatus(s) {
   const [l, c] = ST[s] || ST.offline, login = s === 'auth' || s === 'signedout';
-  $('#sync').innerHTML = `<span class="w-2 h-2 rounded-full ${c}"></span><span class="hidden sm:inline">${l}</span>`;
-  $('#syncBtn').innerHTML = login ? ic('sliders', 'w-4 h-4') : ic('refresh', 'w-4 h-4'); $('#syncBtn').title = login ? 'Configurar sincronização' : 'Forçar sincronização';
   $('#syncBtn').dataset.a = login ? 'signin' : 'sync';
+  DB.queue().then(q => { const n = q.length, err = s === 'error' && Sync.getErr ? ' — ' + Sync.getErr() : '';
+    $('#sync').innerHTML = `<span class="w-2 h-2 rounded-full ${c}"></span><span class="hidden sm:inline">${l}${n && s !== 'syncing' ? ` · ${n} pendente${n > 1 ? 's' : ''}` : ''}</span>`;
+    $('#sync').title = l + err + (n ? ` · ${n} alteração(ões) aguardando sincronizar` : '');
+    $('#syncBtn').innerHTML = (login ? ic('sliders', 'w-4 h-4') : ic('refresh', 'w-4 h-4')) + (n ? `<span class="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-violet-500 text-white text-[10px] flex items-center justify-center">${n}</span>` : '');
+    $('#syncBtn').title = login ? 'Configurar sincronização' : 'Forçar sincronização'; });
 }
 
 /* ================= Navegação / render ================= */
@@ -130,7 +134,7 @@ function buildNav() {
   $('#bottom').innerHTML = bn.slice(0, half).map(bb).join('') + `<button data-a="new-tx" class="nav-add" aria-label="Novo lançamento">${ic('plus', 'w-6 h-6')}</button>` + bn.slice(half).map(bb).join('');
 }
 function render() {
-  S.charts.forEach(c => c.destroy()); S.charts = [];
+  paintBell(); S.charts.forEach(c => c.destroy()); S.charts = [];
   document.querySelectorAll('[data-a="nav"]').forEach(b => {
     const on = b.dataset.id === S.view;
     b.classList.toggle('bg-violet-500', on && b.closest('#side')); b.classList.toggle('text-white', on && !!b.closest('#side'));
@@ -157,7 +161,7 @@ const debtBal = (d, m) => m < d.start ? d.principal : (debtSched(d).filter(x => 
 const invAt = e => { const sn = S.snap.filter(x => x.date <= e).sort((a, b) => b.date.localeCompare(a.date))[0]; return sn ? sn.total : S.tx.filter(t => t.invest && t.date <= e).reduce((s, t) => s + t.amount, 0); };
 const hd = (i, t, x = '') => `<div class="flex items-center justify-between mb-3 gap-2"><h3 class="font-semibold text-sm flex items-center gap-2"><span class="text-violet-400">${ic(i, 'w-4 h-4')}</span>${t}</h3>${x}</div>`;
 const mk = (id, cfg, pick) => { const el = $('#' + id); if (!el || !window.Chart) return; cfg.options = cfg.options || {};
-  cfg.options.onClick = pick ? (e, els, ch) => { if (els.length) pick(els[0].index, ch); } : cfg.options.onClick || ((e, els, ch) => { if (!els.length) return; const m = MN(24).find(x => ml(x) === ch.data.labels[els[0].index]); if (m) { S.month = m; $('#month').value = m; render(); } });
+  cfg.options.onClick = pick ? (e, els, ch) => { if (els.length) pick(els[0].index, ch); } : cfg.options.onClick || ((e, els, ch) => { if (els.length) mkClick(id, els[0].index, ch.data.labels[els[0].index]); });
   S.charts.push(new Chart(el, cfg)); };
 const tip = f => ({ callbacks: { label: f } });
 const yb = { ticks: { callback: v => brl(v) } };
@@ -177,7 +181,7 @@ function analiticaAdv() {
   const dl = (c, p, inv) => { if (!p) return '<p class="text-[11px] mt-1 text-neutral-500">sem mês anterior</p>'; const x = (c - p) / Math.abs(p) * 100, g = (x >= 0) !== inv; return `<p class="text-[11px] mt-1 ${g ? 'text-emerald-400' : 'text-rose-400'}">${x >= 0 ? '▲' : '▼'} ${f1(Math.abs(x))}% vs. mês anterior</p>`; };
   const spark = (v, c) => { const mx = Math.max(...v, 1), mn = Math.min(...v, 0), r = mx - mn || 1, p = v.map((x, i) => `${i / (v.length - 1) * 100},${28 - (x - mn) / r * 26}`).join(' '); return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" class="w-full h-8 mt-2"><polygon points="0,30 ${p} 100,30" fill="${c}22"/><polyline points="${p}" fill="none" stroke="${c}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`; };
   const ser = f => M6.map(m => f(inMonth(m))); let r0 = 0; const cum = ser(x => sum(x, 'income') - sum(x, 'expense')).map(v => r0 += v);
-  const kpi = (lb, v, i, c, d, s, go, t) => `<div data-a="go" data-v="${go}" data-t="${t || ''}" class="card k cursor-pointer hover:border-violet-500"><div class="flex justify-between gap-2"><div><p class="text-xs text-neutral-400">${lb}</p><p class="text-lg md:text-xl font-bold mt-1">${brl(v)}</p>${d}</div><span class="w-9 h-9 shrink-0 rounded-full border flex items-center justify-center" style="border-color:${c}66;color:${c}">${ic(i, 'w-4 h-4')}</span></div>${spark(s, c)}</div>`;
+  const kpi = (lb, v, i, c, d, s, go, t) => `<div data-a="kpi" data-id="${go === 'transfers' ? 'saldo' : 'despesas'}" class="card k cursor-pointer hover:border-violet-500"><div class="flex justify-between gap-2"><div><p class="text-xs text-neutral-400">${lb}</p><p class="text-lg md:text-xl font-bold mt-1">${brl(v)}</p>${d}</div><span class="w-9 h-9 shrink-0 rounded-full border flex items-center justify-center" style="border-color:${c}66;color:${c}">${ic(i, 'w-4 h-4')}</span></div>${spark(s, c)}</div>`;
   // 1. patrimônio líquido
   const nw = M12.map(m => { const e = m + '-31'; return [S.acc.reduce((s, a) => s + balance(a, e), 0), invAt(e), S.asset.reduce((s, a) => s + a.value, 0), -(S.card.reduce((s, c) => s + Math.max(0, cardUsedAt(c, e)), 0) + S.debt.reduce((s, d) => s + debtBal(d, m), 0))]; });
   const nwNow = nw[11].reduce((a, b) => a + b, 0);
@@ -216,14 +220,14 @@ function analiticaAdv() {
     <p class="text-xs text-neutral-400 mt-3">Reserva líquida ${brl(liquid)} ÷ gasto médio de ${brl(avg)}/mês (3 meses). Conta saldo das contas + renda fixa.</p></div>
    <p class="w sec">Planejamento e fluxo de caixa</p>
    <div class="card w w5">${hd('target', 'Orçamento vs. realizado', `<button data-a="sub" data-id="metas" class="text-xs text-violet-400">Metas</button>`)}${bg.map(({ g, sp }) => { const mx = Math.max(g.limit, sp) * 1.15, over = sp > g.limit;
-    return `<div data-a="go" data-v="transactions" data-t="expense" data-c="${g.categoryId}" class="mb-3 cursor-pointer"><div class="flex justify-between text-xs mb-1"><span class="flex items-center gap-1.5">${cat(g.categoryId).icon}${esc(cat(g.categoryId).name)}</span><span class="${over ? 'text-rose-400' : 'text-neutral-400'}">${brl(sp)} / ${brl(g.limit)}</span></div><div class="relative h-2.5 rounded-full bg-slate-200 dark:bg-[#1d1a33]"><div class="h-2.5 rounded-full" style="width:${sp / mx * 100}%;background:${over ? '#d64550' : '#3f9b74'}"></div><span class="absolute -top-1 w-0.5 h-4 bg-slate-500 dark:bg-white" style="left:${g.limit / mx * 100}%"></span></div></div>`; }).join('') || '<p class="text-sm text-neutral-500">Crie metas de gasto por categoria em Configurações → Metas para comparar o planejado com o realizado.</p>'}</div>
+    return `<div data-a="cat" data-c="${g.categoryId}" class="mb-3 cursor-pointer"><div class="flex justify-between text-xs mb-1"><span class="flex items-center gap-1.5">${cat(g.categoryId).icon}${esc(cat(g.categoryId).name)}</span><span class="${over ? 'text-rose-400' : 'text-neutral-400'}">${brl(sp)} / ${brl(g.limit)}</span></div><div class="relative h-2.5 rounded-full bg-slate-200 dark:bg-[#1d1a33]"><div class="h-2.5 rounded-full" style="width:${sp / mx * 100}%;background:${over ? '#d64550' : '#3f9b74'}"></div><span class="absolute -top-1 w-0.5 h-4 bg-slate-500 dark:bg-white" style="left:${g.limit / mx * 100}%"></span></div></div>`; }).join('') || '<p class="text-sm text-neutral-500">Crie metas de gasto por categoria em Configurações → Metas para comparar o planejado com o realizado.</p>'}</div>
    <div class="card w w7">${hd('swap', 'Fluxo de caixa do mês', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}<div class="overflow-x-auto">${sankey(src, tgt)}</div></div>
    <p class="w sec">Hábitos e independência financeira</p>
    <div class="card w w6">${hd('activity', 'Taxa de poupança (média móvel 6 meses)', `<b class="text-sm">${f1(rate[11])}%</b>`)}<div class="h-52"><canvas id="sv"></canvas></div></div>
    <div class="card w w6">${hd('banknote', 'Renda passiva vs. custo de vida', `<b class="text-sm ${cob >= 100 ? 'text-emerald-400' : 'text-neutral-300'}">${f1(cob)}% coberto</b>`)}<div class="h-52"><canvas id="ps"></canvas></div><p class="text-[11px] text-neutral-500 mt-2">${cob >= 100 ? 'Ponto de independência financeira atingido neste mês.' : 'Marque categorias de receita como "renda passiva" em Configurações → Categorias.'}</p></div>
    <div class="card w w5">${hd('calendar', 'Mapa de calor de gastos', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}<div class="grid grid-cols-7 gap-1 text-center text-[10px] text-neutral-500 mb-1">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
     <div class="grid grid-cols-7 gap-1">${'<span></span>'.repeat(first)}${dtot.map((v, i) => `<button data-a="day" data-id="${S.month}-${String(i + 1).padStart(2, '0')}" title="${brl(v)}" class="aspect-square rounded-md text-[10px] text-white/90 relative" style="background:rgba(214,69,80,${v ? (.18 + .82 * v / dmax).toFixed(2) : .06})">${i + 1}${dcat[i] ? `<span class="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style="background:${dcat[i]}"></span>` : ''}</button>`).join('')}</div>
-    <p class="text-[11px] text-neutral-500 mt-2">${des ? `Dia mais caro: ${dtop + 1} (${brl(dtot[dtop])}) · média diária ${brl(des / dim)}. O ponto colorido é a categoria que mais pesou no dia. Toque num dia para ver os lançamentos.` : 'Sem despesas neste mês.'}</p>${mu ? `<div data-a="go" data-v="transactions" data-t="expense" data-c="${mu[0]}" class="flex items-center gap-3 mt-3 p-2.5 rounded-xl bg-[#1d1a33]/70 cursor-pointer"><span>${cat(mu[0]).icon}</span><div class="flex-1 min-w-0"><p class="text-[11px] text-neutral-400">Categoria mais usada</p><p class="text-sm font-semibold truncate">${esc(cat(mu[0]).name)}</p></div><div class="text-right text-xs"><b>${mu[1][0]} lançamentos</b><p class="text-neutral-400">${brl(mu[1][1])}</p></div></div>` : ''}</div>
+    <p class="text-[11px] text-neutral-500 mt-2">${des ? `Dia mais caro: ${dtop + 1} (${brl(dtot[dtop])}) · média diária ${brl(des / dim)}. O ponto colorido é a categoria que mais pesou no dia. Toque num dia para ver os lançamentos.` : 'Sem despesas neste mês.'}</p>${mu ? `<div data-a="cat" data-c="${mu[0]}" class="flex items-center gap-3 mt-3 p-2.5 rounded-xl bg-[#1d1a33]/70 cursor-pointer"><span>${cat(mu[0]).icon}</span><div class="flex-1 min-w-0"><p class="text-[11px] text-neutral-400">Categoria mais usada</p><p class="text-sm font-semibold truncate">${esc(cat(mu[0]).name)}</p></div><div class="text-right text-xs"><b>${mu[1][0]} lançamentos</b><p class="text-neutral-400">${brl(mu[1][1])}</p></div></div>` : ''}</div>
    <div class="card w w7">${hd('calendar', 'Gastos por dia da semana', `<span class="text-xs text-neutral-400">últimos 3 meses</span>`)}<div class="h-44"><canvas id="wd"></canvas></div></div>
    <p class="w sec">Dívidas e investimentos</p>
    <div class="card w w7">${hd('bank', 'Amortização de dívidas', `<b class="text-sm text-rose-400">${brl(debtNow)}</b>`)}${S.debt.length ? `<div class="h-56"><canvas id="dp"></canvas></div><p class="text-[11px] text-neutral-500 mt-2">Saldo devedor em ${ml(S.month)} · juros ainda a pagar ${brl(jurosRest)} (tabela Price).</p>` : '<p class="text-sm text-neutral-500">Nenhuma dívida cadastrada.</p><button data-a="sub" data-id="patrimonio" class="btn mt-3 !py-1 text-xs">Cadastrar dívida</button>'}</div>
@@ -241,6 +245,92 @@ function analiticaAdv() {
   if (sn.length > 1) mk('dd', { type: 'line', data: { labels: sn.map(x => fdate(x.date).slice(0, 5)), datasets: [{ label: 'Drawdown', data: dd, borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,.25)', fill: true, tension: .2, pointRadius: 2 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ` ${f1(c.parsed.y)}% do topo`) }, scales: { y: { max: 0, ticks: { callback: v => v + '%' } } } } });
   mk('wd', { type: 'bar', data: { labels: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'], datasets: [{ data: wd, backgroundColor: wd.map(v => v === Math.max(...wd) ? '#d64550' : '#9aa0ad') }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { y: yb } } });
+}
+
+/* ================= Alertas (sino) e popups de detalhe ================= */
+const DIAF = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'], f1g = v => v.toFixed(1).replace('.', ',');
+function alerts() {
+  const hoje = nowDate(), d7 = dayStr(-7), m0 = hoje.slice(0, 7), pend = S.tx.filter(t => t.type === 'expense' && t.status === 'pending' && !t.cardId);
+  const fat = S.card.map(c => ({ c, v: fatura(c, m0) - faturaPaga(c, m0), due: `${m0}-${String(Math.min(c.due, 28)).padStart(2, '0')}` })).filter(x => x.v > .005);
+  return { hoje, d7, over: pend.filter(t => t.date < hoje), soon: pend.filter(t => t.date >= hoje && t.date <= d7), later: pend.filter(t => t.date > d7), fat, fOver: fat.filter(x => x.due < hoje), fSoon: fat.filter(x => x.due >= hoje && x.due <= d7) };
+}
+function paintBell() {
+  const a = alerts(), red = a.over.length + a.fOver.length, amb = a.soon.length + a.fSoon.length, n = red + amb;
+  $('#bell').innerHTML = ic('bell') + (n ? `<span class="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${red ? 'bg-rose-500' : 'bg-amber-500'}">${n}</span>` : '');
+  $('#bell').title = n ? `${red} atrasada(s) · ${amb} vencendo em 7 dias` : 'Nada vencendo ou atrasado';
+}
+const gob = (label, v, o = {}) => `<button type="button" data-a="go" data-v="${v}" data-t="${o.t || ''}" data-c="${o.c || ''}" data-m="${o.m || ''}" class="btn ${o.p ? 'btn-p' : ''} flex-1">${label}</button>`;
+const rowTx = t => `<button type="button" data-a="edit-tx" data-id="${t.id}" class="w-full flex items-center gap-3 py-2 text-left border-b border-slate-200 dark:border-[#26233d]"><span class="flex-1 min-w-0"><span class="block text-sm truncate">${esc(t.description)}</span><span class="block text-[11px] text-neutral-500">${fdate(t.date)}</span></span><b class="text-sm">${brl(t.amount)}</b></button>`;
+const dpop = (title, stats, list, acts, note = '') => openModal(title, `<div class="grid grid-cols-2 gap-2">${stats.map(([l, v, c]) => `<div class="card !p-3"><p class="text-[11px] text-neutral-400">${l}</p><p class="font-semibold ${c || ''}">${v}</p></div>`).join('')}</div>${note}${list && list.length ? `<p class="text-[11px] text-neutral-400 mt-3">Maiores lançamentos</p><div>${[...list].sort((a, b) => b.amount - a.amount).slice(0, 6).map(rowTx).join('')}</div>` : ''}<div class="flex gap-2 flex-wrap pt-3">${acts.join('')}</div>`, null, true);
+const chipCat = (id, v) => `<span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-[#1d1a33] mr-1 mb-1">${cat(id).icon}${esc(cat(id).name)} ${brl(v)}</span>`;
+const sumBy = (l, f) => l.reduce((s, t) => s + f(t), 0), amt = t => t.amount;
+function monthDetail(m) {
+  const l = inMonth(m), r = sum(l, 'income'), d = sum(l, 'expense'), o = {}, ex = l.filter(t => t.type === 'expense'); ex.forEach(t => o[t.categoryId] = (o[t.categoryId] || 0) + t.amount);
+  const top = Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([id, v]) => chipCat(id, v)).join(''), pd = sum(inMonth(addMonths(m + '-01', -1).slice(0, 7)), 'expense');
+  dpop('Resumo de ' + ml(m), [['Receitas', brl(r), 'text-emerald-400'], ['Despesas', brl(d), 'text-rose-400'], ['Resultado', brl(r - d), r - d >= 0 ? 'text-emerald-400' : 'text-rose-400'], ['Taxa de poupança', r > 0 ? f1g((r - d) / r * 100) + '%' : '—'], ['Aportes', brl(sumBy(l.filter(t => t.invest), amt))], ['Despesas pendentes', brl(sumBy(ex.filter(t => t.status === 'pending'), amt))], ['Mês anterior (despesas)', brl(pd)], ['Lançamentos', String(l.length)]], ex,
+    [gob('Abrir mês no Dashboard', 'dashboard', { m, p: 1 }), gob('Ver transações', 'transactions', { m })], top ? `<p class="text-[11px] text-neutral-400 mt-3">Categorias que mais pesaram</p><div>${top}</div>` : '');
+}
+function catDetail(id, m = S.month) {
+  if (!id) return monthDetail(m);
+  const c = cat(id), l = inMonth(m).filter(t => t.type === 'expense' && t.categoryId === id), v = sumBy(l, amt), tot = sum(inMonth(m), 'expense'), pv = sumBy(inMonth(addMonths(m + '-01', -1).slice(0, 7)).filter(t => t.type === 'expense' && t.categoryId === id), amt), g = S.goal.find(x => x.categoryId === id);
+  dpop(`${esc(c.name)} · ${ml(m)}`, [['Total gasto', brl(v), 'text-rose-400'], ['% das despesas', tot ? f1g(v / tot * 100) + '%' : '—'], ['Lançamentos', String(l.length)], ['Mês anterior', pv ? `${brl(pv)} (${v >= pv ? '+' : '−'}${f1g(Math.abs((v / pv - 1) * 100))}%)` : '—'], ...(g ? [['Meta mensal', brl(g.limit)], ['Meta usada', f1g(v / g.limit * 100) + '%', v > g.limit ? 'text-rose-400' : 'text-emerald-400']] : [])], l,
+    [gob('Ver todas as transações', 'transactions', { t: 'expense', c: id, m, p: 1 }), `<button type="button" data-a="sub" data-id="metas" class="btn flex-1">Metas</button>`]);
+}
+function saldoDetail() {
+  const a = alerts();
+  dpop('Saldo total', [...S.acc.map(x => [x.name, brl(balance(x))]), ['Cartões em aberto', brl(sumBy(a.fat, x => x.v)), 'text-rose-400'], ['Investimentos', brl(sumBy(S.hold, hv))]], null, [gob('Abrir Transferências', 'transfers', { p: 1 }), gob('Ver transações', 'transactions')]);
+}
+function payPop() {
+  const a = alerts();
+  dpop('Contas a pagar', [['Atrasadas', brl(sumBy(a.over, amt) + sumBy(a.fOver, x => x.v)), 'text-rose-400'], ['Vencendo em 7 dias', brl(sumBy(a.soon, amt) + sumBy(a.fSoon, x => x.v)), 'text-amber-400'], ['Mais adiante', brl(sumBy(a.later, amt))], ['Faturas abertas', brl(sumBy(a.fat, x => x.v))]], a.over.concat(a.soon), [gob('Abrir Pagamentos', 'payments', { p: 1 })]);
+}
+function cardMonth(m) {
+  dpop('Cartões · ' + ml(m), S.card.flatMap(c => [[c.name + ' · fatura', brl(fatura(c, m))], [c.name + ' · pago', brl(faturaPaga(c, m))]]), null, [gob('Abrir Cartões', 'cards', { m, p: 1 })]);
+}
+function payMonth(m) {
+  const l = inMonth(m).filter(t => t.type === 'expense');
+  dpop('Pagas vs. pendentes · ' + ml(m), [['Pagas', brl(sumBy(l.filter(t => t.status === 'paid'), amt))], ['Pendentes', brl(sumBy(l.filter(t => t.status === 'pending'), amt)), 'text-rose-400']], l.filter(t => t.status === 'pending'), [gob('Abrir Pagamentos', 'payments', { m, p: 1 })]);
+}
+function wkDetail(i, ms = [S.month], suf = ml(S.month)) {
+  const l = ms.flatMap(m => inMonth(m)).filter(t => new Date(t.date + 'T12:00:00').getDay() === i);
+  dpop(`${DIAF[i]} · ${suf}`, [['Despesas', brl(sum(l, 'expense')), 'text-rose-400'], ['Receitas', brl(sum(l, 'income')), 'text-emerald-400'], ['Lançamentos', String(l.length)]], l.filter(t => t.type === 'expense'), [gob('Ver transações', 'transactions', { t: 'expense', p: 1 })]);
+}
+const wdDetail = i => wkDetail(i, MN(3), 'últimos 3 meses');
+function allocDetail(n) {
+  const hs = S.hold.filter(h => h.cls === n), v = sumBy(hs, hv), c = sumBy(hs, hc);
+  dpop(n, [['Valor atual', brl(v)], ['Custo', brl(c)], ['Resultado', brl(v - c), v >= c ? 'text-emerald-400' : 'text-rose-400'], ['Ativos', String(hs.length)]], null, [gob('Abrir Investimentos', 'investments', { p: 1 })], `<div class="mt-3">${hs.map(h => `<div class="flex justify-between text-sm py-1"><span>${esc(h.ticker)}</span><b>${brl(hv(h))}</b></div>`).join('')}</div>`);
+}
+function ddDetail(i) {
+  const sn = [...S.snap].sort((a, b) => a.date.localeCompare(b.date)), pk = Math.max(...sn.slice(0, i + 1).map(x => x.total)), x = sn[i];
+  dpop('Carteira em ' + fdate(x.date), [['Valor', brl(x.total)], ['Topo até então', brl(pk)], ['Queda do topo', pk ? f1g((x.total / pk - 1) * 100) + '%' : '—', x.total < pk ? 'text-rose-400' : 'text-emerald-400']], null, [gob('Abrir Investimentos', 'investments', { p: 1 })]);
+}
+function debtDetail(m) {
+  const rows = S.debt.flatMap(d => { const r = debtSched(d).find(x => x.m === m); return r ? [[d.name + ' · principal', brl(r.pr)], [d.name + ' · juros', brl(r.it), 'text-rose-400'], [d.name + ' · saldo após', brl(r.bal)]] : []; });
+  dpop('Dívidas · ' + ml(m), rows.length ? rows : [['Parcelas', 'nenhuma neste mês']], null, [`<button type="button" data-a="sub" data-id="patrimonio" class="btn btn-p flex-1">Abrir dívidas</button>`]);
+}
+const mkClick = (id, i, lb) => {
+  const ms = [...MN(24), ...Array.from({ length: 24 }, (_, k) => addMonths(S.month + '-01', k + 1).slice(0, 7))], m = ms.find(x => ml(x) === lb);
+  if (id === 'dp') return m && debtDetail(m); if (id === 'al' || id === 'i1') return allocDetail(lb); if (id === 'dd') return ddDetail(i); if (id === 'wd') return wdDetail(i); if (id === 'wk') return wkDetail(i);
+  if (m) monthDetail(m);
+};
+/* ---- poupança do mês e cobertura da reserva (tela inicial) ---- */
+function poupInfo() {
+  const l = inMonth(S.month), rec = sum(l, 'income'), des = sum(l, 'expense'), saved = rec - des, meta = +(localStorage.metaPoup || 20), rate = rec > 0 ? saved / rec * 100 : 0, alvo = rec * meta / 100;
+  const m3 = MN(3).map(m => sum(inMonth(m), 'expense')).filter(v => v > 0), avg = m3.length ? m3.reduce((a, b) => a + b, 0) / m3.length : des, contas = S.acc.reduce((s, a) => s + balance(a), 0), inv = sumBy(S.hold, hv), guard = contas + inv, rt = +(localStorage.metaRunway || 12);
+  return { rec, des, saved, meta, rate, alvo, hit: rec > 0 && rate >= meta, falta: Math.max(0, alvo - saved), avg, contas, inv, guard, meses: avg ? Math.max(0, guard) / avg : 0, rt, aportes: sumBy(l.filter(t => t.invest), amt) };
+}
+function poupBlocks() {
+  const p = poupInfo(), pc = (a, b) => b > 0 ? Math.max(0, Math.min(100, Math.round(a / b * 100))) : 0;
+  const b1 = `<div data-a="poup" class="cursor-pointer"><div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-sm">Meta de poupança</h3><span class="px-2 py-0.5 rounded-full text-[11px] ${p.hit ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${p.rec <= 0 ? 'Sem receitas' : p.hit ? 'Meta batida' : 'Meta não batida'}</span></div><p class="text-[11px] text-neutral-400">Guardado em ${ml(S.month)}</p><p class="text-2xl font-bold ${p.saved >= 0 ? '' : 'text-rose-400'}">${brl(p.saved)}</p><div class="h-2 rounded-full bg-slate-200 dark:bg-[#25233d] mt-2"><div class="h-2 rounded-full ${p.hit ? 'bg-emerald-500' : 'bg-amber-400'}" style="width:${pc(p.saved, p.alvo)}%"></div></div><p class="text-[11px] text-neutral-400 mt-1">${p.rec <= 0 ? 'Registre receitas para medir a meta.' : p.hit ? `${f1g(p.rate)}% da renda guardada · meta ${p.meta}%` : `${f1g(Math.max(0, p.rate))}% da renda · meta ${p.meta}% · faltam ${brl(p.falta)}`}</p></div>`;
+  const b2 = `<div data-a="poup" class="cursor-pointer"><div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-sm">Quanto tempo o guardado cobre</h3><span class="text-[11px] text-neutral-400">meta ${p.rt} meses</span></div><p class="text-[11px] text-neutral-400">Contas + investimentos ÷ despesa mensal</p><p class="text-2xl font-bold">${f1g(p.meses)} <span class="text-sm font-normal text-neutral-400">meses</span></p><div class="h-2 rounded-full bg-slate-200 dark:bg-[#25233d] mt-2"><div class="h-2 rounded-full bg-indigo-500" style="width:${Math.min(100, p.meses / p.rt * 100)}%"></div></div><p class="text-[11px] text-neutral-400 mt-1">${brl(p.guard)} guardados · despesa média ${brl(p.avg)}/mês</p></div>`;
+  return [b1, b2];
+}
+const poupWide = () => { const [a, b] = poupBlocks(); return `<div class="card w w6">${a}</div><div class="card w w6">${b}</div>`; };
+const poupMobile = () => { const [a, b] = poupBlocks(); return `<div class="card space-y-4">${a}<div class="border-t border-slate-200 dark:border-[#26233d]"></div>${b}</div>`; };
+function poupPop() {
+  const p = poupInfo();
+  dpop('Poupança e reserva', [['Receitas', brl(p.rec), 'text-emerald-400'], ['Despesas', brl(p.des), 'text-rose-400'], ['Guardado no mês', brl(p.saved), p.saved >= 0 ? 'text-emerald-400' : 'text-rose-400'], ['Taxa de poupança', p.rec > 0 ? f1g(p.rate) + '%' : '—'], ['Meta de poupança', p.meta + '%'], ['Aportes no mês', brl(p.aportes)], ['Contas', brl(p.contas)], ['Investimentos', brl(p.inv)], ['Despesa média (3 meses)', brl(p.avg)], ['Cobertura do guardado', f1g(p.meses) + ' meses'], ['Meta de reserva', p.rt + ' meses']], null,
+    [`<button type="button" data-a="sub" data-id="metas" class="btn btn-p flex-1">Ajustar metas</button>`, gob('Ver investimentos', 'investments')]);
 }
 
 const isWide = () => matchMedia('(min-width:768px), (orientation:landscape) and (min-width:560px)').matches;
@@ -269,6 +359,7 @@ function dashboardM() {
    <div class="card !p-4" style="background:linear-gradient(160deg,#2a2370,#14122a 75%)"><div class="flex justify-between items-center"><p class="text-sm text-neutral-300">Saldo total</p>${lk('nav', 'transfers', 'Contas')}</div><p class="text-4xl font-bold mt-1">${brl(cur)}</p>
     <p class="text-xs mt-1 ${d0 >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${d0 >= 0 ? '▲' : '▼'} ${f1(Math.abs(p0))}% · ${brl(Math.abs(d0))} no período</p><div class="h-32 mt-3"><canvas id="hb"></canvas></div>
     <div class="flex justify-between mt-3">${['1S', '1M', '3M', '6M', '1A'].map(r => chip('range', r, r, rg === r)).join('')}</div></div>
+   ${poupMobile()}
    <div class="grid grid-cols-4 gap-2 text-center">${[['qa-exp', 'up', 'Despesa', '#fb7185'], ['qa-inc', 'down', 'Receita', '#34d399'], ['new-transfer', 'swap', 'Transferir', '#818cf8'], ['search', 'search', 'Buscar', '#fbbf24']].map(([a, i, n, c]) => `<button data-a="${a}" class="flex flex-col items-center gap-1.5"><span class="card !p-0 w-14 h-14 rounded-2xl flex items-center justify-center" style="color:${c}">${ic(i, 'w-6 h-6')}</span><span class="text-[11px] text-neutral-400">${n}</span></button>`).join('')}</div>
    <div class="card"><div class="grid grid-cols-2 gap-1 mb-3">${chip('seg', 'income', 'Receitas', seg === 'income')}${chip('seg', 'expense', 'Despesas', seg === 'expense')}</div>
     <p id="sbl" class="text-xs text-neutral-400">${labs[last]}</p><p id="sbv" class="text-3xl font-bold">${brl(vals[last])}</p>
@@ -276,16 +367,16 @@ function dashboardM() {
     <div class="flex justify-between items-center mt-2"><span class="text-[11px] text-neutral-500">Toque numa barra para ver o valor</span><button data-a="go" data-v="transactions" data-t="${seg}" class="text-xs text-indigo-300">Ver lançamentos</button></div></div>
    <div>${sec('Contas', lk('new-transfer', '', 'Transferir'))}${S.acc.map(a => `<div data-a="new-transfer" data-id="${a.id}" class="card !p-3 flex items-center gap-3 mb-2 cursor-pointer"><span class="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-500/20 text-indigo-300">${ic('bank', 'w-5 h-5')}</span><div class="flex-1"><p class="font-medium text-sm">${esc(a.name)}</p><p class="text-[11px] text-neutral-500">${esc(a.type)}</p></div><b>${brl(balance(a))}</b></div>`).join('')}</div>
    <div>${sec('Cartões', lk('new-card', '', '+ Novo'))}<div class="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4">${S.card.map(c => `<div data-a="card" data-id="${c.id}" class="snap-start shrink-0 w-64 rounded-2xl p-4 text-white cursor-pointer" style="background:linear-gradient(135deg,#4338ca,#6d28d9 55%,#c026d3)"><div class="flex justify-between items-center text-sm"><b>${esc(c.name)}</b>${ic('card', 'w-5 h-5')}</div><p class="text-[11px] opacity-70 mt-5">Fatura ${ml(S.month)}</p><p class="text-2xl font-bold">${brl(fatura(c, S.month))}</p><div class="h-1.5 rounded-full bg-white/25 mt-3"><div class="h-1.5 rounded-full bg-white" style="width:${pct(used(c), c.limit)}%"></div></div><div class="flex justify-between text-[11px] opacity-80 mt-1"><span>Limite usado ${pct(used(c), c.limit)}%</span><span>vence dia ${c.due}</span></div></div>`).join('') || '<p class="text-sm text-neutral-500">Nenhum cartão cadastrado.</p>'}</div></div>
-   <div>${sec('Metas do mês', lk('sub', 'metas', 'Gerenciar'))}<div class="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4">${S.goal.map(g => { const sp = by[g.categoryId] || 0, p = pct(sp, g.limit), c = cat(g.categoryId); return `<div data-a="go" data-v="transactions" data-t="expense" data-c="${g.categoryId}" class="card snap-start shrink-0 w-40 cursor-pointer"><span class="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style="background:${c.color}26">${c.icon}</span><p class="text-sm font-medium truncate">${esc(c.name)}</p><p class="text-[11px] text-neutral-400">${brl(sp)} / ${brl(g.limit)}</p><div class="h-1.5 rounded-full bg-slate-200 dark:bg-[#25233d] mt-2"><div class="h-1.5 rounded-full" style="width:${p}%;background:${p >= 100 ? '#fb7185' : '#7c5cf0'}"></div></div></div>`; }).join('')}<button data-a="new-goal" class="card snap-start shrink-0 w-40 flex flex-col items-center justify-center gap-1 text-neutral-400 border-dashed">${ic('plus', 'w-6 h-6')}<span class="text-xs">Nova meta</span></button></div></div>
-   <div class="card">${sec('Gastos por categoria', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}${top.length ? `<div class="relative h-44"><canvas id="mc"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span class="text-[11px] text-neutral-400">Total gasto</span><b class="text-lg">${brl(des)}</b></div></div><div class="mt-3">${top.map(x => `<div data-a="go" data-v="transactions" data-t="expense" data-c="${x.id}" class="flex items-center gap-3 py-2 cursor-pointer border-t border-slate-200 dark:border-[#26233d]"><span class="w-2.5 h-2.5 rounded-full" style="background:${x.c}"></span><span class="flex-1 text-sm truncate">${esc(x.n)}</span><b class="text-sm">${brl(x.v)}</b><span class="w-10 text-right text-xs text-neutral-400">${pct(x.v, des)}%</span></div>`).join('')}</div>` : '<p class="text-sm text-neutral-500">Sem despesas neste mês.</p>'}</div>
+   <div>${sec('Metas do mês', lk('sub', 'metas', 'Gerenciar'))}<div class="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4">${S.goal.map(g => { const sp = by[g.categoryId] || 0, p = pct(sp, g.limit), c = cat(g.categoryId); return `<div data-a="cat" data-c="${g.categoryId}" class="card snap-start shrink-0 w-40 cursor-pointer"><span class="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style="background:${c.color}26">${c.icon}</span><p class="text-sm font-medium truncate">${esc(c.name)}</p><p class="text-[11px] text-neutral-400">${brl(sp)} / ${brl(g.limit)}</p><div class="h-1.5 rounded-full bg-slate-200 dark:bg-[#25233d] mt-2"><div class="h-1.5 rounded-full" style="width:${p}%;background:${p >= 100 ? '#fb7185' : '#7c5cf0'}"></div></div></div>`; }).join('')}<button data-a="new-goal" class="card snap-start shrink-0 w-40 flex flex-col items-center justify-center gap-1 text-neutral-400 border-dashed">${ic('plus', 'w-6 h-6')}<span class="text-xs">Nova meta</span></button></div></div>
+   <div class="card">${sec('Gastos por categoria', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}${top.length ? `<div class="relative h-44"><canvas id="mc"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span class="text-[11px] text-neutral-400">Total gasto</span><b class="text-lg">${brl(des)}</b></div></div><div class="mt-3">${top.map(x => `<div data-a="cat" data-c="${x.id}" class="flex items-center gap-3 py-2 cursor-pointer border-t border-slate-200 dark:border-[#26233d]"><span class="w-2.5 h-2.5 rounded-full" style="background:${x.c}"></span><span class="flex-1 text-sm truncate">${esc(x.n)}</span><b class="text-sm">${brl(x.v)}</b><span class="w-10 text-right text-xs text-neutral-400">${pct(x.v, des)}%</span></div>`).join('')}</div>` : '<p class="text-sm text-neutral-500">Sem despesas neste mês.</p>'}</div>
    <div>${sec('Últimas transações', lk('nav', 'transactions', 'Ver todas'))}${rt || '<p class="text-sm text-neutral-500">Sem transações.</p>'}</div></div>`;
   mk('hb', { type: 'line', data: { labels: hd0.map(d => fdate(d).slice(0, 5)), datasets: [{ label: 'Saldo', data: hv0, borderColor: '#8b5cf6', backgroundColor: 'rgba(124,92,240,.25)', fill: true, tension: .35, pointRadius: 0, pointHoverRadius: 4, borderWidth: 2 }] },
-    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { x: { display: false }, y: { display: false } } } }, () => {});
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { x: { display: false }, y: { display: false } } } }, i => dayModal(hd0[i]));
   mk('sb', { type: 'bar', data: { labels: per === '12M' ? labs.map(x => x.slice(0, 3)) : keys.map(d => d.slice(8)), datasets: [{ label: seg === 'income' ? 'Receitas' : 'Despesas', data: vals, backgroundColor: hl(last), borderRadius: 6 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ' ' + brl(c.parsed.y)) }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } }, y: { ticks: { callback: kf, font: { size: 9 } } } } } },
     (i, ch) => { ch.data.datasets[0].backgroundColor = hl(i); ch.update(); $('#sbv').textContent = brl(vals[i]); $('#sbl').textContent = labs[i]; });
   if (top.length) mk('mc', { type: 'doughnut', data: { labels: top.map(x => x.n), datasets: [{ data: top.map(x => x.v), backgroundColor: top.map(x => x.c), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } },
-    i => { if (top[i].id) { S.view = 'transactions'; S.ftype = 'expense'; S.fcat = top[i].id; render(); } });
+    i => catDetail(top[i].id));
 }
 
 function analitica() {
@@ -323,7 +414,7 @@ function analitica() {
    <p class="w sec">Patrimônio e pagamentos</p>
    ${tile('Patrimônio líquido', brl(nwT[cur]), 'Contas + investimentos + bens − dívidas', 'a9', 'Contas, bens e dívidas')}
    ${tile('Aportes e carteira', brl(apo[cur]), 'Aportes no mês', 'a10', 'Investimentos')}
-   <div data-a="nav" data-id="payments" class="card k cursor-pointer"><h3 class="font-semibold text-sm">Contas a pagar</h3><p class="text-2xl font-bold mt-1">${brl(add(rows, r => r[1]))}</p><p class="text-[11px] text-neutral-400">Pendências e faturas</p>
+   <div data-a="payd" class="card k cursor-pointer"><h3 class="font-semibold text-sm">Contas a pagar</h3><p class="text-2xl font-bold mt-1">${brl(add(rows, r => r[1]))}</p><p class="text-[11px] text-neutral-400">Pendências e faturas</p>
     <table class="w-full text-xs mt-3"><thead><tr class="text-left text-neutral-400"><th class="py-1">Tipo</th><th>Valor</th><th>Qtd.</th><th></th></tr></thead><tbody>${rows.map(([n, v, q, c]) => `<tr class="border-t border-[#2b2b34]"><td class="py-1.5">${n}</td><td>${brl(v)}</td><td>${q}</td><td><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${q ? c : '#3f9b74'}"></span></td></tr>`).join('')}</tbody></table><p class="text-[10px] text-neutral-500 text-right mt-2">Pagamentos</p></div>
    ${tile('Pagas vs. pendentes', String(pend.filter(t => t.date.startsWith(S.month)).length), 'Despesas pendentes no mês', 'a12', 'Transações')}
   </div><p class="sec mt-4 mb-2">Análises avançadas</p><div id="adv"></div>`;
@@ -331,13 +422,13 @@ function analitica() {
   mk('a2', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Despesas', data: daily, borderColor: '#e07a7a', borderWidth: 1.5, tension: .3, pointRadius: 0 }] }, options: op(false) }, i => dayModal(S.month + '-' + String(i + 1).padStart(2, '0')));
   mk('a3', { type: 'bar', data: { labels: weeks.map((_, i) => 'Sem ' + (i + 1)), datasets: [{ label: 'Despesas', data: weeks, backgroundColor: Y }] }, options: op(false) }, i => txModal('Semana ' + (i + 1), l.filter(t => t.type === 'expense' && Math.floor((+t.date.slice(8) - 1) / 7) === i)));
   mk('a4', { type: 'line', data: { labels: daily.map((_, i) => i + 1), datasets: [{ label: 'Acumulado', data: cumD, borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1 }, { label: 'Meta (linear)', data: proj, borderColor: GR, backgroundColor: '#3f9b7422', fill: true, pointRadius: 0 }] }, options: op(false, true) }, i => dayModal(S.month + '-' + String(i + 1).padStart(2, '0')));
-  mk('a5', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Pago', data: cBuy.map((v, i) => Math.min(v, cPaid[i])), backgroundColor: G }, { label: 'Em aberto', data: cBuy.map((v, i) => Math.max(0, v - cPaid[i])), backgroundColor: R }] }, options: op(true, true) }, i => { S.month = M12[i]; $('#month').value = S.month; S.view = 'cards'; render(); });
-  mk('a6', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Líquido', data: recM.map((v, i) => v - desM[i]), borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1, order: 0 }, { label: 'Receitas', data: recM, backgroundColor: GR }, { label: 'Despesas', data: desM.map(v => -v), backgroundColor: R }] }, options: op(false, true) }, i => { S.month = M12[i]; $('#month').value = S.month; S.view = 'transactions'; S.ftype = S.fcat = ''; render(); });
-  if (cs.length) mk('a7', { type: 'doughnut', data: { labels: cs.map(x => cat(x[0]).name), datasets: [{ data: cs.map(x => x[1]), backgroundColor: RP, borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } }, i => { S.view = 'transactions'; S.ftype = 'expense'; S.fcat = cs[i][0]; render(); });
+  mk('a5', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Pago', data: cBuy.map((v, i) => Math.min(v, cPaid[i])), backgroundColor: G }, { label: 'Em aberto', data: cBuy.map((v, i) => Math.max(0, v - cPaid[i])), backgroundColor: R }] }, options: op(true, true) }, i => cardMonth(M12[i]));
+  mk('a6', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Líquido', data: recM.map((v, i) => v - desM[i]), borderColor: W, pointBackgroundColor: W, pointRadius: 2, borderWidth: 1, order: 0 }, { label: 'Receitas', data: recM, backgroundColor: GR }, { label: 'Despesas', data: desM.map(v => -v), backgroundColor: R }] }, options: op(false, true) }, i => monthDetail(M12[i]));
+  if (cs.length) mk('a7', { type: 'doughnut', data: { labels: cs.map(x => cat(x[0]).name), datasets: [{ data: cs.map(x => x[1]), backgroundColor: RP, borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) } } }, i => catDetail(cs[i][0]));
   mk('a8', { type: 'line', data: { labels: M12.map(ml), datasets: [{ label: 'Taxa mensal', data: rate, borderColor: Y, pointBackgroundColor: Y, pointRadius: 2, borderWidth: 1 }, { label: 'Média móvel 6m', data: ma, borderColor: W, borderDash: [4, 3], pointRadius: 0 }] }, options: op(false, true, { plugins: { legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 8, font: { size: 9 } } }, tooltip: tip(c => ` ${c.dataset.label}: ${f1(c.parsed.y)}%`) } }) });
   mk('a9', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Patrimônio', data: nwT, backgroundColor: GR }] }, options: op(false) });
   mk('a10', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ type: 'line', label: 'Carteira', data: cart, borderColor: Y, pointBackgroundColor: Y, pointRadius: 2, yAxisID: 'y1', order: 0 }, { label: 'Aportes', data: apo, backgroundColor: B }] }, options: op(false, true, { scales: { ...sc(false), y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: kf, font: { size: 9 } } } } }) });
-  mk('a12', { type: 'bar', data: { labels: M6.map(ml), datasets: [{ label: 'Pagas', data: paidM, backgroundColor: G }, { label: 'Pendentes', data: pendM, backgroundColor: R }] }, options: op(true, true) }, () => { S.view = 'payments'; render(); });
+  mk('a12', { type: 'bar', data: { labels: M6.map(ml), datasets: [{ label: 'Pagas', data: paidM, backgroundColor: G }, { label: 'Pendentes', data: pendM, backgroundColor: R }] }, options: op(true, true) }, i => payMonth(M6[i]));
   analiticaAdv();
 }
 
@@ -356,25 +447,26 @@ function dashboard() {
   const pby = {}; pl.filter(t => t.type === 'expense').forEach(t => pby[t.categoryId] = (pby[t.categoryId] || 0) + t.amount);
   const cs = S.card.map(c => ({ c, u: used(c), f: fatura(c, S.month) })), cp = cs[0];
   const rings = S.goal.length ? S.goal.slice(0, 4).map(g => [g.categoryId, pct(by[g.categoryId] || 0, g.limit)]) : top.filter(x => x.id).slice(0, 4).map(x => [x.id, pct(x.v, des)]);
-  const ring = ([id, p]) => { const c = cat(id), r = 28, L = 2 * Math.PI * r; return `<button data-a="go" data-v="transactions" data-t="expense" data-c="${id}" class="flex flex-col items-center gap-1"><div class="relative w-16 h-16"><svg viewBox="0 0 72 72" class="w-16 h-16 -rotate-90"><circle cx="36" cy="36" r="${r}" fill="none" stroke-width="7" class="stroke-slate-200 dark:stroke-[#25233d]"/><circle cx="36" cy="36" r="${r}" fill="none" stroke-width="7" stroke-linecap="round" stroke="${c.color}" stroke-dasharray="${L * p / 100} ${L}"/></svg><span class="absolute inset-0 flex items-center justify-center text-xs font-semibold">${p}%</span></div><span class="text-[11px] text-neutral-400 truncate max-w-[72px]">${esc(c.name)}</span>${pby[id] ? `<span class="text-[10px] ${(by[id] || 0) > pby[id] ? 'text-rose-400' : 'text-emerald-400'}">${(by[id] || 0) > pby[id] ? '▲' : '▼'} ${f1(Math.abs(((by[id] || 0) / pby[id] - 1) * 100))}%</span>` : ''}</button>`; };
+  const ring = ([id, p]) => { const c = cat(id), r = 28, L = 2 * Math.PI * r; return `<button data-a="cat" data-c="${id}" class="flex flex-col items-center gap-1"><div class="relative w-16 h-16"><svg viewBox="0 0 72 72" class="w-16 h-16 -rotate-90"><circle cx="36" cy="36" r="${r}" fill="none" stroke-width="7" class="stroke-slate-200 dark:stroke-[#25233d]"/><circle cx="36" cy="36" r="${r}" fill="none" stroke-width="7" stroke-linecap="round" stroke="${c.color}" stroke-dasharray="${L * p / 100} ${L}"/></svg><span class="absolute inset-0 flex items-center justify-center text-xs font-semibold">${p}%</span></div><span class="text-[11px] text-neutral-400 truncate max-w-[72px]">${esc(c.name)}</span>${pby[id] ? `<span class="text-[10px] ${(by[id] || 0) > pby[id] ? 'text-rose-400' : 'text-emerald-400'}">${(by[id] || 0) > pby[id] ? '▲' : '▼'} ${f1(Math.abs(((by[id] || 0) / pby[id] - 1) * 100))}%</span>` : ''}</button>`; };
   const rt = [...S.tx].sort(byDesc).slice(0, 5).map(t => { const c = t.type === 'transfer' ? { icon: ic('swap', 'w-5 h-5'), color: '#64748b' } : cat(t.categoryId), col = t.type === 'income' ? 'text-emerald-400' : t.type === 'expense' ? 'text-rose-400' : 'text-neutral-400', sg = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : '';
     return `<div data-a="edit-tx" data-id="${t.id}" class="flex items-center gap-3 py-2 cursor-pointer"><span class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${c.color}26">${c.icon}</span><div class="flex-1 min-w-0"><p class="text-sm truncate">${esc(t.description)}</p><p class="text-[11px] text-neutral-500">${fdate(t.date)}</p></div><b class="text-sm ${col}">${sg}${brl(t.amount)}</b></div>`; }).join('');
   const al = CLS.map(n => [n, S.hold.filter(h => h.cls === n).reduce((s, h) => s + hv(h), 0)]).filter(x => x[1] > 0), alMax = Math.max(...al.map(x => x[1]), 1);
   const wk = [Array(7).fill(0), Array(7).fill(0)]; l.forEach(t => { const d = new Date(t.date + 'T12:00:00').getDay(); if (t.type === 'income') wk[0][d] += t.amount; else if (t.type === 'expense') wk[1][d] += t.amount; });
   const ym = M12.map(m => inMonth(m)), dot = (c, n) => `<span class="flex items-center gap-1 text-[11px] text-neutral-400"><span class="w-2 h-2 rounded-full" style="background:${c}"></span>${n}</span>`;
   $('#view').innerHTML = `<div class="dash">
+   ${poupWide()}
    ${stat('Saldo total', saldo, chg(saldo, prevS), cum, '#6366f1', 'transfers')}
    ${stat('Despesas do mês', des, chg(des, sum(pl, 'expense'), true), ser(x => sum(x, 'expense')), '#d946ef', 'transactions', 'expense')}
    <div class="card w w3">${hh('Cartões ativos', `<button data-a="nav" data-id="cards" class="text-xs text-indigo-400">ver todos</button>`)}${cp ? `<div data-a="card" data-id="${cp.c.id}" class="cursor-pointer rounded-xl p-4 text-white" style="background:linear-gradient(135deg,#4338ca,#6d28d9 55%,#c026d3)"><div class="flex justify-between items-center text-xs opacity-90"><span class="font-semibold">${esc(cp.c.name)}</span>${ic('card', 'w-5 h-5')}</div><p class="text-[11px] opacity-70 mt-4">Fatura ${ml(S.month)}</p><p class="text-xl font-bold">${brl(cp.f)}</p><div class="flex justify-between text-[11px] opacity-80 mt-3"><span>Limite usado ${pct(cp.u, cp.c.limit)}%</span><span>vence dia ${cp.c.due}</span></div></div>${cs.slice(1, 3).map(x => `<div data-a="card" data-id="${x.c.id}" class="flex justify-between text-xs mt-2 cursor-pointer"><span class="text-neutral-400">${esc(x.c.name)}</span><b>${brl(x.f)}</b></div>`).join('')}` : `<p class="text-sm text-neutral-500">Nenhum cartão cadastrado.</p><button data-a="new-card" class="btn mt-3 !py-1 text-xs">Cadastrar cartão</button>`}</div>
-   <div class="card w w3">${hh('Categorias', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}${top.length ? `<div class="relative h-32"><canvas id="ct"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><b class="text-sm">${brl(des)}</b><span class="text-[10px] text-neutral-400">despesas</span></div></div><div class="mt-2 space-y-1">${top.map(x => `<div data-a="go" data-v="transactions" data-t="expense" data-c="${x.id}" class="flex items-center gap-2 text-xs cursor-pointer"><span class="w-2 h-2 rounded-full" style="background:${x.c}"></span><span class="flex-1 truncate">${esc(x.n)}</span><b>${pct(x.v, des)}%</b></div>`).join('')}</div>` : '<p class="text-sm text-neutral-500">Sem despesas neste mês.</p>'}</div>
+   <div class="card w w3">${hh('Categorias', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}${top.length ? `<div class="relative h-32"><canvas id="ct"></canvas><div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><b class="text-sm">${brl(des)}</b><span class="text-[10px] text-neutral-400">despesas</span></div></div><div class="mt-2 space-y-1">${top.map(x => `<div data-a="cat" data-c="${x.id}" class="flex items-center gap-2 text-xs cursor-pointer"><span class="w-2 h-2 rounded-full" style="background:${x.c}"></span><span class="flex-1 truncate">${esc(x.n)}</span><b>${pct(x.v, des)}%</b></div>`).join('')}</div>` : '<p class="text-sm text-neutral-500">Sem despesas neste mês.</p>'}</div>
    <div class="card w w6">${hh('Receitas e despesas', `<div class="flex gap-3">${dot('#5b4fe0', 'Receitas')}${dot('#d946ef', 'Despesas')}</div>`)}<div class="h-52"><canvas id="ds"></canvas></div></div>
    <div class="card w w6">${hh('Parâmetros de gasto', `<span class="text-xs text-neutral-400">${S.goal.length ? '% da meta' : '% das despesas'}</span>`)}<div class="flex flex-wrap justify-around gap-3 py-2">${rings.map(ring).join('')}<button data-a="new-goal" class="flex flex-col items-center gap-1"><span class="w-16 h-16 rounded-full border border-dashed border-slate-400 flex items-center justify-center text-neutral-400">${ic('plus', 'w-5 h-5')}</span><span class="text-[11px] text-neutral-400">nova meta</span></button></div></div>
    <div class="card w w4">${hh('Transações', `<button data-a="nav" data-id="transactions" class="text-xs text-indigo-400">ver todas</button>`)}${rt || '<p class="text-sm text-neutral-500">Sem transações.</p>'}</div>
    <div class="card w w3">${hh('Investimentos', `<button data-a="nav" data-id="investments" class="text-xs text-indigo-400">abrir</button>`)}${al.map(x => `<div class="mb-3"><div class="flex justify-between text-xs mb-1"><span>${x[0]}</span><b>${brl(x[1])}</b></div><div class="h-1.5 rounded-full bg-slate-200 dark:bg-[#25233d]"><div class="h-1.5 rounded-full bg-indigo-500" style="width:${x[1] / alMax * 100}%"></div></div></div>`).join('') || '<p class="text-sm text-neutral-500">Cadastre ativos em Investimentos.</p>'}</div>
    <div class="card w w5">${hh('Receitas e despesas por dia da semana', `<span class="text-xs text-neutral-400">${ml(S.month)}</span>`)}<div class="h-44"><canvas id="wk"></canvas></div></div></div>`;
-  if (top.length) mk('ct', { type: 'doughnut', data: { labels: top.map(x => x.n), datasets: [{ data: top.map(x => x.v), backgroundColor: top.map(x => x.c), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) }, onClick: (e, el) => { if (el.length && top[el[0].index].id) { S.view = 'transactions'; S.ftype = 'expense'; S.fcat = top[el[0].index].id; render(); } } } });
+  if (top.length) mk('ct', { type: 'doughnut', data: { labels: top.map(x => x.n), datasets: [{ data: top.map(x => x.v), backgroundColor: top.map(x => x.c), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.label}: ${brl(c.parsed)}`) }, onClick: (e, el) => { if (el.length) catDetail(top[el[0].index].id); } } });
   mk('ds', { type: 'bar', data: { labels: M12.map(ml), datasets: [{ label: 'Receitas', data: ym.map(x => sum(x, 'income')), backgroundColor: '#5b4fe0', borderRadius: 4 }, { label: 'Despesas', data: ym.map(x => sum(x, 'expense')), backgroundColor: '#d946ef', borderRadius: 4 }] },
-    options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.dataset.label}: ${brl(c.parsed.y)}`) }, scales: { y: { ticks: { callback: kf } } }, onClick: (e, el) => { if (el.length) { S.month = M12[el[0].index]; $('#month').value = S.month; render(); } } } });
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.dataset.label}: ${brl(c.parsed.y)}`) }, scales: { y: { ticks: { callback: kf } } }, onClick: (e, el) => { if (el.length) monthDetail(M12[el[0].index]); } } });
   mk('wk', { type: 'line', data: { labels: DIA, datasets: [{ label: 'Receitas', data: wk[0], borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.25)', fill: true, tension: .4, pointRadius: 0 }, { label: 'Despesas', data: wk[1], borderColor: '#d946ef', backgroundColor: 'rgba(217,70,239,.2)', fill: true, tension: .4, pointRadius: 0 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tip(c => ` ${c.dataset.label}: ${brl(c.parsed.y)}`) }, scales: { y: { ticks: { callback: kf } } } } });
 }
@@ -462,13 +554,13 @@ function payForm(id) {
 }
 
 function payments() {
-  const hoje = nowDate(), pend = S.tx.filter(t => t.type === 'expense' && t.status === 'pending' && !t.cardId).sort((a, b) => a.date.localeCompare(b.date));
-  const fats = S.card.map(c => [c, fatura(c, S.month) - faturaPaga(c, S.month)]).filter(x => x[1] > 0.005);
-  const atras = pend.filter(t => t.date < hoje).reduce((s, t) => s + t.amount, 0), mes = pend.filter(t => t.date.startsWith(S.month)).reduce((s, t) => s + t.amount, 0);
-  $('#view').innerHTML = `<div class="grid grid-cols-3 gap-3 mb-4">${[['Em atraso', atras, 'text-rose-500'], ['A pagar no mês', mes, 'text-amber-500'], ['Faturas abertas', fats.reduce((s, x) => s + x[1], 0), 'text-violet-500']].map(([l, v, c]) => `<div class="card"><p class="text-xs text-neutral-400">${l}</p><p class="font-bold ${c}">${brl(v)}</p></div>`).join('')}</div>
-  <div class="space-y-2">${fats.map(([c, v]) => `<div data-a="card" data-id="${c.id}" class="card !p-3 flex items-center gap-3 cursor-pointer hover:border-violet-500"><span class="text-violet-400">${ic('card', 'w-6 h-6')}</span><div class="flex-1"><p class="font-medium">Fatura ${esc(c.name)}</p><p class="text-xs text-neutral-500">vence dia ${c.due}</p></div><b>${brl(v)}</b></div>`).join('')}
-  ${pend.map(t => `<div class="card !p-3 flex items-center gap-3"><div data-a="edit-tx" data-id="${t.id}" class="flex-1 cursor-pointer"><p class="font-medium">${esc(t.description)}</p><p class="text-xs ${t.date < hoje ? 'text-rose-500' : 'text-neutral-500'}">${t.date < hoje ? 'Atrasada · ' : ''}${fdate(t.date)} · ${esc(cat(t.categoryId).name)}</p></div><b>${brl(t.amount)}</b><button data-a="toggle" data-id="${t.id}" class="btn btn-p !py-1 text-xs">Pagar</button></div>`).join('')}
-  ${!fats.length && !pend.length ? '<p class="text-center text-neutral-500 py-8">Nada pendente.</p>' : ''}</div>`;
+  const a = alerts(), sm = arr => arr.reduce((s, t) => s + t.amount, 0), fs = arr => arr.reduce((s, x) => s + x.v, 0);
+  const grp = [['Atrasadas', a.over, a.fOver, 'text-rose-400'], ['Vencendo em 7 dias', a.soon, a.fSoon, 'text-amber-400'], ['Mais adiante', a.later, a.fat.filter(x => x.due > a.d7), 'text-neutral-300']];
+  const row = t => `<div class="card !p-3 flex items-center gap-3"><div data-a="edit-tx" data-id="${t.id}" class="flex-1 min-w-0 cursor-pointer"><p class="font-medium truncate">${esc(t.description)}</p><p class="text-xs ${t.date < a.hoje ? 'text-rose-400' : 'text-neutral-500'}">${t.date < a.hoje ? 'Atrasada · ' : ''}${fdate(t.date)} · ${esc(cat(t.categoryId).name)}</p></div><b>${brl(t.amount)}</b><button data-a="toggle" data-id="${t.id}" class="btn btn-p !py-1 text-xs">Pagar</button></div>`;
+  const frow = x => `<div data-a="card" data-id="${x.c.id}" class="card !p-3 flex items-center gap-3 cursor-pointer hover:border-violet-500"><span class="text-violet-400">${ic('card', 'w-6 h-6')}</span><div class="flex-1"><p class="font-medium">Fatura ${esc(x.c.name)}</p><p class="text-xs ${x.due < a.hoje ? 'text-rose-400' : 'text-neutral-500'}">${x.due < a.hoje ? 'Vencida · ' : 'Vence '}${fdate(x.due)}</p></div><b>${brl(x.v)}</b></div>`;
+  const t3 = [['Em atraso', sm(a.over) + fs(a.fOver), 'text-rose-400'], ['Vence em 7 dias', sm(a.soon) + fs(a.fSoon), 'text-amber-400'], ['Total pendente', sm(a.over.concat(a.soon, a.later)) + fs(a.fat), 'text-violet-400']];
+  const body = grp.filter(g => g[1].length || g[2].length).map(([n, tx, fv, c]) => `<p class="text-sm font-semibold ${c} mt-4 mb-2">${n} · ${tx.length + fv.length}</p><div class="space-y-2">${fv.map(frow).join('')}${tx.map(row).join('')}</div>`).join('');
+  $('#view').innerHTML = `<div class="grid grid-cols-3 gap-3 mb-2">${t3.map(([l, v, c]) => `<div class="card"><p class="text-xs text-neutral-400">${l}</p><p class="font-bold ${c}">${brl(v)}</p></div>`).join('')}</div>${body || '<p class="text-center text-neutral-500 py-10">Nada pendente.</p>'}`;
 }
 
 const CLS = ['Ações', 'FIIs', 'Cripto', 'Fundos', 'Renda fixa', 'Outros'], CCOL = ['#8b5cf6', '#eab308', '#a855f7', '#0ea5e9', '#22c55e', '#78716c'];
@@ -481,7 +573,7 @@ function investments() {
   <div class="grid grid-cols-3 gap-3 mb-4">${k('Patrimônio', brl(tot))}${k('Custo', brl(cost))}${k('Resultado', `${brl(pl)} (${cost ? (pl / cost * 100).toFixed(1).replace('.', ',') : '0'}%)`, pl >= 0 ? 'text-emerald-500' : 'text-rose-500')}</div>
   <div class="dash"><div class="card w w4"><h3 class="font-semibold mb-2">Alocação</h3><div class="h-44"><canvas id="i1"></canvas></div>${g.map(x => `<div class="flex items-center gap-2 text-xs mt-1"><span class="w-2 h-2 rounded-full" style="background:${x[2]}"></span><span class="flex-1">${x[0]}</span><b>${tot ? Math.round(x[1] / tot * 100) : 0}%</b></div>`).join('')}</div>
   <div class="card w w7 !p-3 space-y-1"><h3 class="font-semibold px-1">Ativos <span class="text-xs font-normal text-neutral-400">(toque para atualizar a cotação)</span></h3>${[...S.hold].sort((a, b) => hv(b) - hv(a)).map(h => { const p = hv(h) - hc(h); return `<div data-a="edit-hold" data-id="${h.id}" class="flex items-center gap-3 py-2 px-1 border-b border-neutral-200 dark:border-[#26233d] cursor-pointer"><div class="flex-1"><b>${esc(h.ticker)}</b> <span class="text-xs text-neutral-400">${h.cls} · ${h.qty} un.</span></div><div class="text-right"><p class="font-semibold">${brl(hv(h))}</p><p class="text-xs ${p >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${brl(p)}</p></div></div>`; }).join('') || '<p class="text-sm text-neutral-500 p-2">Nenhum ativo cadastrado.</p>'}</div></div>`;
-  if (window.Chart && g.length) S.charts.push(new Chart($('#i1'), { type: 'doughnut', data: { labels: g.map(x => x[0]), datasets: [{ data: g.map(x => x[1]), backgroundColor: g.map(x => x[2]), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false } } } }));
+  if (window.Chart && g.length) S.charts.push(new Chart($('#i1'), { type: 'doughnut', data: { labels: g.map(x => x[0]), datasets: [{ data: g.map(x => x[1]), backgroundColor: g.map(x => x[2]), borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false } }, onClick: (e, el) => { if (el.length) allocDetail(g[el[0].index][0]); } } }));
 }
 function holdForm(h = {}) {
   const nw = !h.id;
@@ -516,12 +608,13 @@ function subGeral() {
 }
 function subInteg() {
   const g = Sync.getCfg();
-  $('#sub').innerHTML = `<div class="card max-w-xl"><h3 class="font-semibold mb-1">GitHub (sincronização)</h3>
+  $('#sub').innerHTML = `<div class="card max-w-xl"><h3 class="font-semibold mb-1">GitHub (sincronização)</h3><div id="gst" class="text-xs mb-3 p-2 rounded-lg bg-[#1d1a33]/60"></div>
    <p class="text-sm text-slate-500 mb-3">Repositório <b>privado</b> só para os dados e token fine-grained com <i>Contents: Read and write</i> apenas nele. Funciona offline: sincroniza quando houver internet.</p>
    <form id="ghForm" class="space-y-2">${fld('Usuário (dono)', `<input name="owner" required class="inp" value="${esc(g.owner || '')}">`)}${fld('Repositório', `<input name="repo" required class="inp" value="${esc(g.repo || '')}">`)}
    ${fld('Branch', `<input name="branch" class="inp" value="${esc(g.branch || 'main')}">`)}${fld('Arquivo', `<input name="path" class="inp" value="${esc(g.path || 'financas_pessoais_db.json')}">`)}
    ${fld('Token (PAT)', `<input name="token" type="password" autocomplete="off" ${g.token ? '' : 'required'} class="inp" placeholder="${g.token ? '•••••• salvo (em branco mantém)' : 'github_pat_...'}">`)}
    <div class="flex gap-2 flex-wrap pt-1"><button class="btn btn-p">Salvar e sincronizar</button><button type="button" class="btn" data-a="sync">Forçar sincronização</button><button type="button" class="btn" data-a="signout">Remover token</button></div></form></div>`;
+  DB.queue().then(q => { const st = Sync.getStatus(); $('#gst').innerHTML = `Situação: <b>${(ST[st] || ST.offline)[0]}</b> · ${q.length} alteração(ões) aguardando envio${st === 'error' && Sync.getErr() ? `<br><span class="text-rose-400">Último erro: ${esc(Sync.getErr())}</span>` : ''}`; });
   $('#ghForm').onsubmit = e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target));
     Sync.saveCfg({ owner: d.owner.trim(), repo: d.repo.trim(), branch: d.branch.trim() || 'main', path: d.path.trim() || 'financas_pessoais_db.json', token: d.token.trim() || g.token }); Sync.sync(); };
 }
@@ -670,7 +763,7 @@ document.addEventListener('click', async e => {
   const { a, id } = b.dataset;
   const tx = S.tx.find(x => x.id === id);
   switch (a) {
-    case 'nav': closeDrawer(); S.view = id; S.ftype = S.fcat = ''; render(); scrollTo(0, 0); break;
+    case 'nav': closeDrawer(); closeModal(); S.view = id; S.ftype = S.fcat = ''; render(); scrollTo(0, 0); break;
     case 'new-tx': txForm(); break;
     case 'edit-tx': txForm(tx); break;
     case 'del-tx': if (confirm('Excluir esta transação?')) await DB.remove('transactions', id); break;
@@ -681,10 +774,10 @@ document.addEventListener('click', async e => {
     case 'new-cat': catForm(); break;
     case 'edit-cat': catForm(S.cat.find(x => x.id === id)); break;
     case 'del-cat': if (!delGuard(id, 'esta categoria') && confirm('Excluir esta categoria?')) await DB.remove('categories', id); break;
-    case 'go': S.view = b.dataset.v; S.ftype = b.dataset.t || ''; S.fcat = b.dataset.c || ''; render(); scrollTo(0, 0); break;
+    case 'go': closeModal(); if (b.dataset.m) { S.month = b.dataset.m; $('#month').value = S.month; } S.view = b.dataset.v; S.ftype = b.dataset.t || ''; S.fcat = b.dataset.c || ''; render(); scrollTo(0, 0); break;
     case 'ftype': S.ftype = id; render(); break;
     case 'fcat': S.fcat = id; render(); break;
-    case 'sub': S.view = 'settings'; S.sub = id; render(); break;
+    case 'sub': closeModal(); S.view = 'settings'; S.sub = id; render(); break;
     case 'card': cardDetail(id); break;
     case 'new-card': cardForm(); break;
     case 'edit-card': cardForm(S.card.find(x => x.id === id)); break;
@@ -713,6 +806,10 @@ document.addEventListener('click', async e => {
     case 'edit-debt': debtForm(S.debt.find(x => x.id === id)); break;
     case 'del-debt': if (confirm('Excluir dívida?')) await DB.remove('debts', id); break;
     case 'icon': localStorage.appIcon = id; applyIcon(); render(); break;
+    case 'cat': catDetail(b.dataset.c); break;
+    case 'kpi': if (id === 'saldo') saldoDetail(); else monthDetail(S.month); break;
+    case 'payd': payPop(); break;
+    case 'poup': poupPop(); break;
     case 'close': closeModal(); break;
     case 'theme': localStorage.theme = { auto: 'light', light: 'dark', dark: 'auto' }[localStorage.theme || 'dark']; applyTheme(); render(); break;
     case 'signin': S.view = 'settings'; S.sub = 'integracoes'; render(); break;
@@ -737,7 +834,7 @@ $('#imp').addEventListener('change', async e => {
 $('#month').addEventListener('change', e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) { S.month = e.target.value; render(); } });
 document.addEventListener('change', e => { if (e.target.id === 'mp') localStorage.metaPoup = e.target.value; if (e.target.id === 'mr') localStorage.metaRunway = e.target.value; });
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-document.addEventListener('db:change', async () => { await load(); render(); });
+document.addEventListener('db:change', async () => { await load(); render(); paintStatus(Sync.getStatus()); });
 matchMedia('(min-width:768px), (orientation:landscape) and (min-width:560px)').addEventListener('change', () => render());
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); render(); });
 
